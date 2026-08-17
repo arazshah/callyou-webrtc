@@ -1,0 +1,18 @@
+FROM node:22-bookworm-slim AS build
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
+RUN corepack enable
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/tsconfig.json ./packages/shared/
+COPY apps/web/package.json apps/web/tsconfig.json apps/web/vite.config.ts ./apps/web/
+RUN pnpm install --frozen-lockfile --filter @callyou/web...
+COPY packages/shared ./packages/shared
+COPY apps/web ./apps/web
+RUN pnpm --filter @callyou/shared build && pnpm --filter @callyou/web build
+
+FROM caddy:2.10-alpine
+COPY infrastructure/caddy/Caddyfile.coolify /etc/caddy/Caddyfile
+COPY --from=build /app/apps/web/dist /srv
+EXPOSE 80
+HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1

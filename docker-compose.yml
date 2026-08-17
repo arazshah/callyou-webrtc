@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-callyou}
+      POSTGRES_USER: ${POSTGRES_USER:-callyou}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-callyou}
+    ports: ['5432:5432']
+    volumes: ['postgres_data:/var/lib/postgresql/data']
+    healthcheck:
+      {
+        test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}'],
+        interval: 5s,
+        timeout: 3s,
+        retries: 10,
+      }
+  coturn:
+    image: coturn/coturn:4.6.3
+    network_mode: host
+    command:
+      [
+        '-n',
+        '--log-file=stdout',
+        '--fingerprint',
+        '--use-auth-secret',
+        '--static-auth-secret=${TURN_SHARED_SECRET:-development-turn-secret}',
+        '--realm=${TURN_REALM:-localhost}',
+        '--listening-port=3478',
+        '--min-port=${TURN_MIN_PORT:-49160}',
+        '--max-port=${TURN_MAX_PORT:-49200}',
+      ]
+    profiles: ['turn']
+volumes: { postgres_data: {} }

@@ -1,0 +1,11 @@
+fingerprint
+use-auth-secret
+static-auth-secret=CHANGE_ME
+realm=callyou.ir
+listening-port=3478
+min-port=49160
+max-port=49200
+external-ip=203.0.113.10
+no-multicast-peers
+no-cli
+stale-nonce=600

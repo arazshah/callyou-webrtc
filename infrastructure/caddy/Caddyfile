@@ -1,0 +1,13 @@
+{$DOMAIN:callyou.ir} {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    X-Content-Type-Options "nosniff"
+  }
+  @backend path /api/* /socket.io/*
+  reverse_proxy @backend server:3000
+  root * /srv
+  try_files {path} /index.html
+  file_server
+}
