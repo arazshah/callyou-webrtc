@@ -1,25 +1,69 @@
 FROM node:22-bookworm-slim AS build
-ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
-RUN corepack enable
+
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
+
 WORKDIR /app
+
+# نصب مستقیم pnpm با زمان انتظار و تلاش مجدد بیشتر
+RUN npm config set registry https://registry.npmjs.org/ \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-factor 2 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set fetch-timeout 300000 \
+    && for attempt in 1 2 3 4 5; do \
+         echo "Installing pnpm, attempt ${attempt}/5"; \
+         npm install --global pnpm@11.19.0 && break; \
+         if [ "${attempt}" = "5" ]; then exit 1; fi; \
+         sleep 15; \
+       done \
+    && pnpm --version
+
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+
 COPY packages/shared/package.json packages/shared/tsconfig.json ./packages/shared/
+
 COPY apps/server/package.json apps/server/tsconfig.json ./apps/server/
-RUN pnpm install --frozen-lockfile --filter @callyou/server...
+
+RUN pnpm config set registry https://registry.npmjs.org/ \
+    && pnpm config set fetchRetries 5 \
+    && pnpm config set fetchRetryMintimeout 20000 \
+    && pnpm config set fetchRetryMaxtimeout 120000 \
+    && pnpm config set fetchTimeout 300000
+
+RUN pnpm install \
+    --frozen-lockfile \
+    --filter @callyou/server...
+
 COPY packages/shared ./packages/shared
 COPY apps/server ./apps/server
-RUN pnpm --filter @callyou/shared build && pnpm --filter @callyou/server build
-RUN pnpm --filter @callyou/server deploy --prod --legacy /prod/server
+
+RUN pnpm --filter @callyou/shared build \
+    && pnpm --filter @callyou/server build
+
+RUN pnpm --filter @callyou/server deploy \
+    --prod \
+    --legacy \
+    /prod/server
+
 
 FROM node:22-bookworm-slim AS production
+
 ENV NODE_ENV=production
+
 USER node
+
 WORKDIR /app
+
 COPY --from=build --chown=node:node /prod/server/node_modules ./node_modules
 COPY --from=build --chown=node:node /prod/server/package.json ./package.json
+
 COPY --from=build --chown=node:node /app/apps/server/dist ./dist
 COPY --from=build --chown=node:node /app/apps/server/drizzle ./drizzle
+
 COPY --from=build --chown=node:node /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=build --chown=node:node /app/packages/shared/dist ./packages/shared/dist
+
 EXPOSE 3000
-CMD ["node","dist/index.js"]
+
+CMD ["node", "dist/index.js"]
