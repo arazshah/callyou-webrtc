@@ -1,43 +1,26 @@
-services:
-  postgres:
-    image: postgres:17-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-callyou}
-      POSTGRES_USER: ${POSTGRES_USER:-callyou}
-      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_64_POSTGRES}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-  server:
+server:
     build:
       context: .
       dockerfile: Dockerfile.server
     restart: unless-stopped
+
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
-      PORT: 3000
+      PORT: "3000"
 
-      APP_URL: ${APP_URL:?Set APP_URL to the public HTTPS URL}
+      APP_URL: ${APP_URL:?Set APP_URL}
 
       DATABASE_URL: postgres://${POSTGRES_USER:-callyou}:${SERVICE_PASSWORD_64_POSTGRES}@postgres:5432/${POSTGRES_DB:-callyou}
 
-      SESSION_SECRET: ${SERVICE_BASE64_64_SESSION}
+      SESSION_SECRET: ${SERVICE_BASE64_64_SESSION:?Set SERVICE_BASE64_64_SESSION}
       SESSION_HOURS: ${SESSION_HOURS:-24}
       ROOM_INACTIVITY_HOURS: ${ROOM_INACTIVITY_HOURS:-24}
       RECONNECT_GRACE_SECONDS: ${RECONNECT_GRACE_SECONDS:-30}
 
-      TURN_SHARED_SECRET: ${SERVICE_BASE64_64_TURN}
-      TURN_REALM: ${TURN_REALM:?Set TURN_REALM to the TURN hostname}
-      TURN_HOST: ${TURN_HOST:?Set TURN_HOST to the public TURN hostname}
+      TURN_SHARED_SECRET: ${SERVICE_BASE64_64_TURN:?Set SERVICE_BASE64_64_TURN}
+      TURN_REALM: ${TURN_REALM:?Set TURN_REALM}
+      TURN_HOST: ${TURN_HOST:?Set TURN_HOST}
       TURN_TTL_SECONDS: ${TURN_TTL_SECONDS:-3600}
 
     depends_on:
@@ -47,72 +30,18 @@ services:
     expose:
       - "3000"
 
-    command:
-      - sh
-      - -c
-      - node dist/migrate.js && exec node dist/index.js
-
     healthcheck:
       test:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
-      interval: 15s
+        - >-
+          fetch('http://127.0.0.1:3000/api/health')
+          .then(r => {
+            if (!r.ok) process.exit(1);
+          })
+          .catch(() => process.exit(1))
+      interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 15s
-
-  web:
-    build:
-      context: .
-      dockerfile: Dockerfile.web.coolify
-    restart: unless-stopped
-
-    depends_on:
-      server:
-        condition: service_healthy
-
-    expose:
-      - "80"
-
-  coturn:
-    image: coturn/coturn:4.6.3
-    restart: unless-stopped
-
-    environment:
-      TURN_SHARED_SECRET: ${SERVICE_BASE64_64_TURN}
-      TURN_REALM: ${TURN_REALM}
-      TURN_PUBLIC_IP: ${TURN_PUBLIC_IP}
-      TURN_MIN_PORT: ${TURN_MIN_PORT:-49160}
-      TURN_MAX_PORT: ${TURN_MAX_PORT:-49200}
-
-    ports:
-      - "3478:3478/tcp"
-      - "3478:3478/udp"
-      - "${TURN_MIN_PORT:-49160}-${TURN_MAX_PORT:-49200}:${TURN_MIN_PORT:-49160}-${TURN_MAX_PORT:-49200}/udp"
-
-    entrypoint:
-      - /bin/sh
-      - -ec
-
-    command:
-      - |
-        exec turnserver \
-          -n \
-          --log-file=stdout \
-          --fingerprint \
-          --use-auth-secret \
-          "--static-auth-secret=$${TURN_SHARED_SECRET}" \
-          "--realm=$${TURN_REALM}" \
-          "--external-ip=$${TURN_PUBLIC_IP}" \
-          --listening-port=3478 \
-          "--min-port=$${TURN_MIN_PORT}" \
-          "--max-port=$${TURN_MAX_PORT}" \
-          --no-multicast-peers \
-          --no-cli \
-          --no-tls \
-          --no-dtls
-
-volumes:
-  postgres_data:
+      retries: 10
+      start_period: 30s
