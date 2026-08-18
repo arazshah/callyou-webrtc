@@ -12,6 +12,8 @@ import {
   ChevronUp,
   Circle,
   Highlighter,
+  ImagePlus,
+  LoaderCircle,
   Minus,
   MousePointer2,
   Move,
@@ -22,10 +24,12 @@ import {
   Type,
   Undo2,
 } from 'lucide-react';
-import type { BoardElement } from '@callyou/shared';
+import { LIMITS, type BoardElement } from '@callyou/shared';
 import type { CallYouSocket } from '../socket';
 import { useBoard } from '../hooks/useBoard';
 import { useI18n, type MessageKey } from '../i18n';
+import { TextDialog } from './Modal';
+import { prepareBoardAssets } from '../boardAssets';
 type Tool =
   | 'select'
   | 'pen'
@@ -127,6 +131,19 @@ function renderElement(el: BoardElement, selected = false) {
         {...common}
       />
     );
+  else if (el.type === 'image')
+    node = (
+      <image
+        href={el.assetData}
+        x={el.x}
+        y={el.y}
+        width={el.width}
+        height={el.height}
+        preserveAspectRatio="xMidYMid meet"
+        opacity={el.opacity}
+        data-element-id={el.id}
+      />
+    );
   else
     node = (
       <text
@@ -172,15 +189,18 @@ export function Whiteboard({
   participantId,
   isHost,
   onClear,
+  onNotice,
 }: {
   socket: CallYouSocket;
   participantId: string;
   isHost: boolean;
   onClear: () => void;
+  onNotice: (message: string) => void;
 }) {
   const { t } = useI18n();
   const board = useBoard(socket);
   const svg = useRef<SVGSVGElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [tool, setTool] = useState<Tool>('pen');
   const [color, setColor] = useState('#172554');
   const [width, setWidth] = useState(3);
@@ -188,6 +208,11 @@ export function Whiteboard({
   const [pan, setPan] = useState({ x: -500, y: -350 });
   const [draft, setDraft] = useState<BoardElement | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [textDialog, setTextDialog] = useState<{
+    point: Point;
+    element?: BoardElement;
+  } | null>(null);
   const action = useRef<{
     start: Point;
     original?: BoardElement;
@@ -311,21 +336,7 @@ export function Whiteboard({
       return;
     }
     if (tool === 'text') {
-      const value = window.prompt(t('text'))?.trim();
-      if (value)
-        board.put({
-          id: crypto.randomUUID(),
-          type: 'text',
-          createdBy: participantId,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          x: p.x,
-          y: p.y,
-          text: value.slice(0, 2000),
-          strokeColor: color,
-          strokeWidth: width,
-          opacity: 1,
-        });
+      setTextDialog({ point: p });
       return;
     }
     if (tool === 'pan') {
@@ -398,7 +409,14 @@ export function Whiteboard({
           pressure: point.pressure,
         }));
         board.put({ ...original, x: 0, y: 0, points, updatedAt: Date.now() });
-      } else
+      } else if (original.type === 'image')
+        board.put({
+          ...original,
+          width: Math.max(80, p.x - original.x),
+          height: Math.max(80, p.y - original.y),
+          updatedAt: Date.now(),
+        });
+      else
         board.put({
           ...original,
           width: p.x - original.x,
@@ -444,8 +462,82 @@ export function Whiteboard({
     const id = targetId(event);
     const element = board.elements.find((value) => value.id === id && value.type === 'text');
     if (!element) return;
-    const value = window.prompt(t('text'), element.text)?.trim();
-    if (value) board.put({ ...element, text: value.slice(0, 2000), updatedAt: Date.now() });
+    setTextDialog({ point: { x: element.x, y: element.y }, element });
+  }
+  function saveText(value: string) {
+    if (!textDialog) return;
+    const now = Date.now();
+    board.put(
+      textDialog.element
+        ? { ...textDialog.element, text: value.slice(0, LIMITS.boardText), updatedAt: now }
+        : {
+            id: crypto.randomUUID(),
+            type: 'text',
+            createdBy: participantId,
+            createdAt: now,
+            updatedAt: now,
+            x: textDialog.point.x,
+            y: textDialog.point.y,
+            text: value.slice(0, LIMITS.boardText),
+            strokeColor: color,
+            strokeWidth: width,
+            opacity: 1,
+          },
+    );
+    setTextDialog(null);
+  }
+  async function importFile(file: File | undefined) {
+    if (!file) return;
+    if (board.elements.filter((element) => element.type === 'image').length >= LIMITS.boardAssets) {
+      onNotice(t('tooManyPages'));
+      return;
+    }
+    setImporting(true);
+    try {
+      const assets = await prepareBoardAssets(file);
+      const existing = board.elements.filter((element) => element.type === 'image').length;
+      if (existing + assets.length > LIMITS.boardAssets) throw new Error('too_many_pages');
+      const centerX = pan.x + (svg.current?.clientWidth ?? 1200) / (2 * zoom);
+      let nextY = pan.y + 110 / zoom;
+      for (const asset of assets) {
+        const displayWidth = Math.min(760, asset.width);
+        const displayHeight = (asset.height / asset.width) * displayWidth;
+        const now = Date.now();
+        board.put({
+          id: crypto.randomUUID(),
+          type: 'image',
+          createdBy: participantId,
+          createdAt: now,
+          updatedAt: now,
+          x: centerX - displayWidth / 2,
+          y: nextY,
+          width: displayWidth,
+          height: displayHeight,
+          assetName: asset.name.slice(0, 120),
+          assetData: asset.data,
+          strokeColor: '#94a3b8',
+          strokeWidth: 1,
+          opacity: 1,
+        });
+        nextY += displayHeight + 32;
+      }
+      setTool('select');
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      onNotice(
+        t(
+          code === 'too_many_pages'
+            ? 'tooManyPages'
+            : code === 'source_too_large' || code === 'asset_too_large'
+              ? 'boardFileTooLarge'
+              : code === 'unsupported_file'
+                ? 'unsupportedFile'
+                : 'boardAssetFailed',
+        ),
+      );
+    } finally {
+      setImporting(false);
+    }
   }
   return (
     <section className="board-shell">
@@ -461,6 +553,28 @@ export function Whiteboard({
             <Icon />
           </button>
         ))}
+        <span className="divider" />
+        <button
+          className="board-file-button"
+          title={t('addBoardFile')}
+          aria-label={t('addBoardFile')}
+          disabled={importing}
+          onClick={() => fileInput.current?.click()}
+        >
+          {importing ? <LoaderCircle className="spinning" /> : <ImagePlus />}
+          <span>{importing ? t('importing') : t('addBoardFile')}</span>
+        </button>
+        <input
+          ref={fileInput}
+          className="board-file-input"
+          type="file"
+          accept="image/png,image/jpeg,image/webp,application/pdf"
+          disabled={importing}
+          onChange={(event) => {
+            void importFile(event.target.files?.[0]);
+            event.target.value = '';
+          }}
+        />
         <span className="divider" />
         <label className="color-control" title="Color">
           <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
@@ -483,8 +597,9 @@ export function Whiteboard({
           <Redo2 />
         </button>
         {isHost && (
-          <button onClick={onClear} title={t('clearBoard')}>
+          <button className="clear-board-button" onClick={onClear} title={t('clearBoard')}>
             <Trash2 />
+            <span>{t('clearBoard')}</span>
           </button>
         )}
       </nav>
@@ -551,6 +666,13 @@ export function Whiteboard({
           <ChevronDown />
         </button>
       </div>
+      {textDialog && (
+        <TextDialog
+          initialValue={textDialog.element?.text}
+          onCancel={() => setTextDialog(null)}
+          onSave={saveText}
+        />
+      )}
     </section>
   );
 }

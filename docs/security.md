@@ -7,3 +7,5 @@ Room URLs contain high-entropy readable slugs and act as invitations; they must 
 Never log cookies, session tokens, TURN credentials, SDP, detailed ICE data, or full board text. Fastify redaction covers cookies. Rotate `SESSION_SECRET` to invalidate all sessions; rotate `TURN_SHARED_SECRET` jointly in server and coturn. Place `.env` at mode 0600 and restrict Docker/socket access.
 
 This is transport security, not full application E2EE. WebRTC media is encrypted in transit; HTTPS/WSS protects signaling and whiteboard traffic; the application server can decode board snapshots. Report vulnerabilities privately and keep Node, base images, PostgreSQL, Caddy, and coturn patched.
+
+Imported board images and rendered PDF pages are persisted inside the board snapshot. Chat messages and attachments are validated, size-bounded, relayed only to the current room over Socket.IO, and are not persisted by the application. Users should still avoid sharing sensitive files because the server relays chat traffic and can access board snapshots.

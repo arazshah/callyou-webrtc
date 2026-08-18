@@ -9,11 +9,13 @@ CallYou is a self-hosted, private, two-person video room with a shared real-time
 - Direct WebRTC audio/video with perfect negotiation, trickle ICE, ICE restart, and short-lived coturn credentials
 - Yjs object-level board synchronization and durable PostgreSQL snapshots
 - Pen, highlighter, eraser, line, arrow, rectangle, ellipse, text, select/move, pan, zoom, undo/redo, and host clear
+- Image and PDF page import for live teaching and annotation directly on the shared board
+- Ephemeral in-room chat with text, emoji, image previews, and bounded file transfer
 - Live remote strokes and named collaborator cursors
-- Responsive whiteboard-first UI, Persian RTL, English, keyboard controls, touch/stylus Pointer Events
+- Responsive whiteboard-first UI, separate participant video tiles, accessible modals, Persian RTL, English, keyboard controls, and touch/stylus Pointer Events
 - Structured redacted logs, readiness/liveness endpoints, strict validation, security headers, rate limits, room expiry
 
-Non-goals include accounts, public rooms, chat, group calls, screen sharing, recording, file sharing, calendars, payments, and AI features.
+Non-goals include accounts, public rooms, group calls, screen sharing, recording, persistent chat history, calendars, payments, and AI features.
 
 ## Architecture
 

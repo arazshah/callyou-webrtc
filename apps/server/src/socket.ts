@@ -1,6 +1,7 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
 import {
+  chatMessageSchema,
   cursorSchema,
   iceCandidateSchema,
   LIMITS,
@@ -154,6 +155,24 @@ export function createSocketServer(
     socket.on('board:sync-request', async () => {
       if (current)
         socket.emit('board:sync', Y.encodeStateAsUpdate(await board.get(current.roomId)));
+    });
+    socket.on('chat:send', async (value, ack) => {
+      if (!current) return ack({ ok: false, code: 'unauthorized' });
+      const parsed = chatMessageSchema.safeParse(value);
+      if (!parsed.success) return ack({ ok: false, code: 'invalid_payload' });
+      try {
+        await rooms.touch(current.sessionId);
+        io.to(current.roomId).emit('chat:message', {
+          ...parsed.data,
+          participantId: current.participantId,
+          displayName: current.displayName,
+          color: current.color,
+          sentAt: Date.now(),
+        });
+        ack({ ok: true });
+      } catch {
+        ack({ ok: false, code: 'send_failed' });
+      }
     });
     socket.on(
       'webrtc:offer',

@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useI18n } from '../i18n';
 import { requestMedia } from '../media';
+import { CircleHelp } from 'lucide-react';
+import { HelpModal } from '../components/HelpModal';
 export function HomePage() {
   const { t, lang, toggle } = useI18n();
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [help, setHelp] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -29,9 +32,15 @@ export function HomePage() {
         <a className="brand" href="/" aria-label="CallYou home">
           <span>Call</span>You
         </a>
-        <button className="language" onClick={toggle}>
-          {t('language')}
-        </button>
+        <div className="topbar-actions">
+          <button className="help-button" onClick={() => setHelp(true)}>
+            <CircleHelp />
+            {t('help')}
+          </button>
+          <button className="language" onClick={toggle}>
+            {t('language')}
+          </button>
+        </div>
       </header>
       <section className="hero">
         <div className="hero-copy">
@@ -77,6 +86,40 @@ export function HomePage() {
           </p>
         </form>
       </section>
+      <section className="guide-teaser">
+        <div>
+          <span className="eyebrow">{t('help')}</span>
+          <h2>{t('guideTitle')}</h2>
+          <p>{t('guideIntro')}</p>
+        </div>
+        <button className="secondary" onClick={() => setHelp(true)}>
+          <CircleHelp />
+          {t('help')}
+        </button>
+      </section>
+      <footer className="home-footer">
+        <div className="creator-credit">
+          <span>{t('creator')}</span>
+          <a href="https://araz.me" target="_blank" rel="noreferrer">
+            araz.me
+          </a>
+        </div>
+        <aside className="support-card">
+          <div>
+            <strong>{t('supportTitle')}</strong>
+            <p>{t('supportText')}</p>
+          </div>
+          <a href="https://www.coffeebede.com/arazshah" target="_blank" rel="noreferrer">
+            <img
+              className="coffee-banner"
+              src="https://coffeebede.ir/DashboardTemplateV2/app-assets/images/banner/default-yellow.svg"
+              alt={t('supportTitle')}
+              loading="lazy"
+            />
+          </a>
+        </aside>
+      </footer>
+      {help && <HelpModal onClose={() => setHelp(false)} />}
     </main>
   );
 }

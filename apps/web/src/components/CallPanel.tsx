@@ -10,12 +10,16 @@ export function CallPanel({
   slug,
   participantId,
   peerId,
+  localName,
+  peerName,
   onLeave,
 }: {
   socket: CallYouSocket;
   slug: string;
   participantId: string;
   peerId?: string;
+  localName: string;
+  peerName?: string | undefined;
   onLeave: () => void;
 }) {
   const { t } = useI18n();
@@ -28,12 +32,13 @@ export function CallPanel({
         <div className="video-tile remote">
           <video ref={call.remoteVideo} autoPlay playsInline />
           {call.state !== 'connected' && (
-            <span>
+            <span className="video-placeholder">
               {call.state === 'idle'
                 ? t('guestWaiting')
                 : t(call.state === 'failed' ? 'disconnected' : call.state)}
             </span>
           )}
+          <strong className="video-name">{peerName ?? t('remoteVideo')}</strong>
           {call.autoplayBlocked && (
             <button onClick={() => void call.playRemote()} aria-label="Play remote media">
               <Play />
@@ -42,7 +47,8 @@ export function CallPanel({
         </div>
         <div className="video-tile local">
           <video ref={call.localVideo} autoPlay muted playsInline />
-          <span>{t('noMedia')}</span>
+          <span className="video-placeholder">{t('noMedia')}</span>
+          <strong className="video-name">{localName || t('localVideo')}</strong>
         </div>
       </div>
       <div className={`connection ${call.state}`}>

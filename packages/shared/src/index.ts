@@ -4,9 +4,14 @@ export const LIMITS = {
   displayName: 40,
   boardText: 2000,
   boardElements: 10_000,
+  boardAssets: 12,
+  boardAssetData: 650_000,
   strokePoints: 5_000,
-  yjsUpdateBytes: 512 * 1024,
-  socketBytes: 1024 * 1024,
+  yjsUpdateBytes: 900 * 1024,
+  socketBytes: 10 * 1024 * 1024,
+  chatText: 2000,
+  chatFileBytes: 2 * 1024 * 1024,
+  chatAttachmentData: 2_850_000,
 } as const;
 
 export const RESERVED_SLUGS = new Set([
@@ -55,28 +60,87 @@ const pointSchema = z.object({
   y: z.number().finite(),
   pressure: z.number().min(0).max(1).optional(),
 });
-export const boardElementSchema = z.object({
-  id: z.uuid(),
-  type: z.enum(['pen', 'highlighter', 'line', 'arrow', 'rectangle', 'ellipse', 'text']),
-  createdBy: z.string().min(1).max(100),
-  createdAt: z.number().int(),
-  updatedAt: z.number().int(),
-  x: z.number().finite(),
-  y: z.number().finite(),
-  width: z.number().finite().optional(),
-  height: z.number().finite().optional(),
-  rotation: z.number().finite().optional(),
-  points: z.array(pointSchema).max(LIMITS.strokePoints).optional(),
-  text: z.string().max(LIMITS.boardText).optional(),
-  strokeColor: z.string().regex(/^#[0-9a-f]{6}$/i),
-  fillColor: z
-    .string()
-    .regex(/^#[0-9a-f]{6}$/i)
-    .optional(),
-  strokeWidth: z.number().min(0.5).max(80),
-  opacity: z.number().min(0).max(1),
-});
+export const boardElementSchema = z
+  .object({
+    id: z.uuid(),
+    type: z.enum(['pen', 'highlighter', 'line', 'arrow', 'rectangle', 'ellipse', 'text', 'image']),
+    createdBy: z.string().min(1).max(100),
+    createdAt: z.number().int(),
+    updatedAt: z.number().int(),
+    x: z.number().finite(),
+    y: z.number().finite(),
+    width: z.number().finite().optional(),
+    height: z.number().finite().optional(),
+    rotation: z.number().finite().optional(),
+    points: z.array(pointSchema).max(LIMITS.strokePoints).optional(),
+    text: z.string().max(LIMITS.boardText).optional(),
+    assetName: z.string().trim().min(1).max(120).optional(),
+    assetData: z
+      .string()
+      .max(LIMITS.boardAssetData)
+      .regex(/^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/]+={0,2}$/i)
+      .optional(),
+    strokeColor: z.string().regex(/^#[0-9a-f]{6}$/i),
+    fillColor: z
+      .string()
+      .regex(/^#[0-9a-f]{6}$/i)
+      .optional(),
+    strokeWidth: z.number().min(0.5).max(80),
+    opacity: z.number().min(0).max(1),
+  })
+  .superRefine((element, context) => {
+    if (element.type === 'image') {
+      if (!element.assetData || !element.assetName)
+        context.addIssue({ code: 'custom', message: 'image_asset_required' });
+      if ((element.width ?? 0) <= 0 || (element.height ?? 0) <= 0)
+        context.addIssue({ code: 'custom', message: 'image_dimensions_required' });
+    } else if (element.assetData || element.assetName) {
+      context.addIssue({ code: 'custom', message: 'unexpected_image_asset' });
+    }
+  });
 export type BoardElement = z.infer<typeof boardElementSchema>;
+
+export const chatAttachmentSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    type: z.enum([
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'image/gif',
+      'application/pdf',
+      'text/plain',
+      'application/zip',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ]),
+    size: z.number().int().positive().max(LIMITS.chatFileBytes),
+    data: z.string().max(LIMITS.chatAttachmentData),
+  })
+  .superRefine((attachment, context) => {
+    const prefix = `data:${attachment.type};base64,`;
+    if (
+      !attachment.data.startsWith(prefix) ||
+      !/^[a-z0-9+/]+={0,2}$/i.test(attachment.data.slice(prefix.length))
+    )
+      context.addIssue({ code: 'custom', message: 'attachment_type_mismatch' });
+  });
+
+export const chatMessageSchema = z
+  .object({
+    id: z.uuid(),
+    text: z.string().trim().max(LIMITS.chatText).optional(),
+    attachment: chatAttachmentSchema.optional(),
+  })
+  .strict()
+  .refine((message) => Boolean(message.text || message.attachment), 'empty_message');
+export type ChatMessagePayload = z.infer<typeof chatMessageSchema>;
+export type ChatMessage = ChatMessagePayload & {
+  participantId: string;
+  displayName: string;
+  color: string;
+  sentAt: number;
+};
 
 export const roomJoinEventSchema = z.object({ slug: slugSchema });
 export const cursorSchema = z.object({ x: z.number().finite(), y: z.number().finite() });
@@ -127,6 +191,7 @@ export interface ServerToClientEvents {
   'board:live-stroke': (data: z.infer<typeof liveStrokeSchema> & { participantId: string }) => void;
   'board:live-stroke-end': (data: { participantId: string; id: string }) => void;
   'board:cleared': () => void;
+  'chat:message': (data: ChatMessage) => void;
   'webrtc:offer': (data: z.infer<typeof signalSchema>) => void;
   'webrtc:answer': (data: z.infer<typeof signalSchema>) => void;
   'webrtc:ice-candidate': (data: z.infer<typeof iceCandidateSchema>) => void;
@@ -142,6 +207,10 @@ export interface ClientToServerEvents {
   'board:sync-request': () => void;
   'board:live-stroke': (data: z.infer<typeof liveStrokeSchema>) => void;
   'board:live-stroke-end': (data: { id: string }) => void;
+  'chat:send': (
+    data: ChatMessagePayload,
+    ack: (result: { ok: boolean; code?: string }) => void,
+  ) => void;
   'webrtc:offer': (data: z.infer<typeof signalSchema>) => void;
   'webrtc:answer': (data: z.infer<typeof signalSchema>) => void;
   'webrtc:ice-candidate': (data: z.infer<typeof iceCandidateSchema>) => void;

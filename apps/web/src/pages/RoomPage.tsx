@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Check, Copy, LogOut, ShieldX } from 'lucide-react';
+import { Check, CircleHelp, Copy, LogOut, Power, ShieldX, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../api';
 import { connectSocket, type CallYouSocket } from '../socket';
 import { useI18n } from '../i18n';
 import { Whiteboard } from '../components/Whiteboard';
 import { CallPanel } from '../components/CallPanel';
 import { requestMedia } from '../media';
+import { ConfirmDialog } from '../components/Modal';
+import { HelpModal } from '../components/HelpModal';
+import { ChatPanel } from '../components/ChatPanel';
 type Identity = {
   participantId: string;
   role: 'host' | 'guest';
@@ -22,6 +25,9 @@ export function RoomPage() {
   const [error, setError] = useState('');
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [copied, setCopied] = useState(false);
+  const [confirming, setConfirming] = useState<'clear' | 'end' | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [help, setHelp] = useState(false);
   const socket = useMemo<CallYouSocket>(() => connectSocket(), []);
   useEffect(() => {
     let alive = true;
@@ -77,13 +83,24 @@ export function RoomPage() {
     socket.disconnect();
     navigate('/');
   }
-  async function end() {
-    if (!confirm(t('endConfirm'))) return;
-    await api.end(slug);
-    setStatus('ended');
+  async function confirmAction() {
+    if (!confirming) return;
+    setActionBusy(true);
+    try {
+      if (confirming === 'end') {
+        await api.end(slug);
+        setStatus('ended');
+      } else await api.clear(slug);
+      setConfirming(null);
+    } catch {
+      setError(confirming === 'clear' ? t('clearFailed') : t('unavailable'));
+    } finally {
+      setActionBusy(false);
+    }
   }
-  async function clear() {
-    if (confirm(t('clearConfirm'))) await api.clear(slug);
+  function notify(message: string) {
+    setError(message);
+    window.setTimeout(() => setError((current) => (current === message ? '' : current)), 3600);
   }
   async function copy() {
     await navigator.clipboard.writeText(location.href);
@@ -158,10 +175,21 @@ export function RoomPage() {
             {t('language')}
           </button>
           {identity?.role === 'host' && (
-            <button className="danger-text" onClick={() => void end()}>
-              {t('end')}
-            </button>
+            <>
+              <button className="danger-text" onClick={() => setConfirming('clear')}>
+                <Trash2 />
+                <span>{t('clearBoard')}</span>
+              </button>
+              <button className="danger-text" onClick={() => setConfirming('end')}>
+                <Power />
+                <span>{t('end')}</span>
+              </button>
+            </>
           )}
+          <button onClick={() => setHelp(true)} title={t('help')}>
+            <CircleHelp />
+            <span>{t('help')}</span>
+          </button>
           <button onClick={() => void leave()} title={t('leave')}>
             <LogOut />
           </button>
@@ -174,15 +202,19 @@ export function RoomPage() {
               socket={socket}
               participantId={identity.participantId}
               isHost={identity.role === 'host'}
-              onClear={() => void clear()}
+              onClear={() => setConfirming('clear')}
+              onNotice={notify}
             />
             <CallPanel
               socket={socket}
               slug={slug}
               participantId={identity.participantId}
               {...peerProps}
+              localName={identity.displayName}
+              peerName={identity.peers[0]?.displayName}
               onLeave={() => void leave()}
             />
+            <ChatPanel socket={socket} participantId={identity.participantId} onError={notify} />
           </>
         ) : (
           <div className="workspace-loading">
@@ -196,6 +228,17 @@ export function RoomPage() {
           {error}
         </div>
       )}
+      {confirming && (
+        <ConfirmDialog
+          title={t(confirming === 'clear' ? 'clearBoardTitle' : 'endRoomTitle')}
+          message={t(confirming === 'clear' ? 'clearConfirm' : 'endConfirm')}
+          danger
+          busy={actionBusy}
+          onCancel={() => !actionBusy && setConfirming(null)}
+          onConfirm={() => void confirmAction()}
+        />
+      )}
+      {help && <HelpModal onClose={() => setHelp(false)} />}
     </main>
   );
 }

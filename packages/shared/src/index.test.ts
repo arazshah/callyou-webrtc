@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   boardElementSchema,
+  chatMessageSchema,
   iceCandidateSchema,
   LIMITS,
   liveStrokeSchema,
@@ -60,8 +61,51 @@ describe('board validation', () => {
         opacity: 1,
       }).success,
     ).toBe(false));
-  it('publishes a finite encoded-update limit', () =>
-    expect(LIMITS.yjsUpdateBytes).toBe(512 * 1024));
+  it('accepts bounded board images and rejects missing image data', () => {
+    const base = {
+      id: crypto.randomUUID(),
+      type: 'image',
+      createdBy: 'p',
+      createdAt: 1,
+      updatedAt: 1,
+      x: 0,
+      y: 0,
+      width: 800,
+      height: 600,
+      assetName: 'lesson.webp',
+      strokeColor: '#000000',
+      strokeWidth: 1,
+      opacity: 1,
+    };
+    expect(
+      boardElementSchema.safeParse({ ...base, assetData: 'data:image/webp;base64,YQ==' }).success,
+    ).toBe(true);
+    expect(boardElementSchema.safeParse(base).success).toBe(false);
+  });
+  it('publishes finite board and socket limits', () => {
+    expect(LIMITS.yjsUpdateBytes).toBeLessThan(LIMITS.socketBytes);
+    expect(LIMITS.boardAssets).toBe(12);
+  });
+});
+
+describe('chat validation', () => {
+  it('accepts text and bounded attachments but rejects empty messages', () => {
+    expect(chatMessageSchema.safeParse({ id: crypto.randomUUID(), text: 'سلام 👋' }).success).toBe(
+      true,
+    );
+    expect(
+      chatMessageSchema.safeParse({
+        id: crypto.randomUUID(),
+        attachment: {
+          name: 'note.txt',
+          type: 'text/plain',
+          size: 1,
+          data: 'data:text/plain;base64,YQ==',
+        },
+      }).success,
+    ).toBe(true);
+    expect(chatMessageSchema.safeParse({ id: crypto.randomUUID() }).success).toBe(false);
+  });
 });
 
 describe('signaling validation', () => {

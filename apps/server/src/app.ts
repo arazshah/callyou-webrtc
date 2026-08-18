@@ -28,8 +28,9 @@ export async function buildApp(config: Config = loadConfig()) {
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:', 'blob:'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+        fontSrc: ["'self'", 'data:', 'https://cdn.jsdelivr.net'],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https://coffeebede.ir'],
         mediaSrc: ["'self'", 'blob:'],
         connectSrc: ["'self'", 'ws:', 'wss:'],
       },

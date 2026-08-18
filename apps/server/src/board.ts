@@ -35,6 +35,8 @@ export class BoardManager {
     const values = [...candidate.getMap('elements').values()];
     if (
       values.length > LIMITS.boardElements ||
+      values.filter((value) => (value as { type?: unknown }).type === 'image').length >
+        LIMITS.boardAssets ||
       values.some((value) => !boardElementSchema.safeParse(value).success)
     )
       return false;
