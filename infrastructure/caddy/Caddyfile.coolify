@@ -7,10 +7,20 @@
 		X-Content-Type-Options "nosniff"
 	}
 
-	@backend path /api/* /socket.io/*
-	reverse_proxy @backend server:3000
+	# API و WebSocket فقط به Backend ارسال شوند
+	@backend {
+		path /api /api/*
+		path /socket.io /socket.io/*
+	}
 
-	root * /srv
-	try_files {path} /index.html
-	file_server
+	handle @backend {
+		reverse_proxy server:3000
+	}
+
+	# سایر درخواست‌ها مربوط به React/Vite هستند
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
 }
