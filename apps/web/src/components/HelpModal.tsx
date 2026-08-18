@@ -1,4 +1,4 @@
-import { ImagePlus, Link2, MessageCircle, MousePointer2, Video } from 'lucide-react';
+import { ImagePlus, Link2, MessageCircle, MonitorUp, MousePointer2, Video } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { Modal } from './Modal';
 
@@ -10,6 +10,7 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
     { icon: MousePointer2, title: t('guide3Title'), body: t('guide3Body') },
     { icon: ImagePlus, title: t('guide4Title'), body: t('guide4Body') },
     { icon: MessageCircle, title: t('guide5Title'), body: t('guide5Body') },
+    { icon: MonitorUp, title: t('guide6Title'), body: t('guide6Body') },
   ];
   return (
     <Modal

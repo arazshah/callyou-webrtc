@@ -2,7 +2,6 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useI18n } from '../i18n';
-import { requestMedia } from '../media';
 import { CircleHelp } from 'lucide-react';
 import { HelpModal } from '../components/HelpModal';
 export function HomePage() {
@@ -17,7 +16,6 @@ export function HomePage() {
     setBusy(true);
     setError('');
     try {
-      void requestMedia().catch(() => null);
       const { slug } = await api.createRoom({ displayName: data.get('displayName') });
       navigate(`/${slug}`);
     } catch {
@@ -81,8 +79,8 @@ export function HomePage() {
           </button>
           <p className="privacy-note">
             {lang === 'fa'
-              ? 'تصویر و صدا ذخیره نمی‌شود. رسانه با WebRTC رمزگذاری می‌شود.'
-              : 'Audio and video are never stored. Media is encrypted by WebRTC.'}
+              ? 'رسانه روی سرور ذخیره نمی‌شود؛ ضبط محلی فقط با رضایت دوطرف انجام می‌شود.'
+              : 'Media is not stored on the server; local recording requires mutual consent.'}
           </p>
         </form>
       </section>

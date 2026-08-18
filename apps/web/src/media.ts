@@ -1,8 +1,10 @@
 let stream: MediaStream | null = null;
+let pendingStop: number | null = null;
 function notifyMediaChanged() {
   window.dispatchEvent(new Event('callyou:media-changed'));
 }
 export async function requestMedia(video = true, audio = true) {
+  cancelScheduledMediaStop();
   stream?.getTracks().forEach((track) => track.stop());
   stream = await navigator.mediaDevices.getUserMedia({ video, audio });
   notifyMediaChanged();
@@ -28,6 +30,18 @@ export async function replaceDevice(kind: 'videoinput' | 'audioinput', deviceId:
   return stream;
 }
 export function stopMedia() {
+  cancelScheduledMediaStop();
   stream?.getTracks().forEach((t) => t.stop());
   stream = null;
+}
+export function scheduleMediaStop() {
+  cancelScheduledMediaStop();
+  pendingStop = window.setTimeout(() => {
+    pendingStop = null;
+    stopMedia();
+  }, 0);
+}
+export function cancelScheduledMediaStop() {
+  if (pendingStop != null) window.clearTimeout(pendingStop);
+  pendingStop = null;
 }

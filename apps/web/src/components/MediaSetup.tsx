@@ -3,7 +3,7 @@ import { Camera, Mic, Volume2 } from 'lucide-react';
 import { currentMedia, replaceDevice, requestMedia } from '../media';
 import { useI18n } from '../i18n';
 type Device = MediaDeviceInfo;
-export function MediaSetup() {
+export function MediaSetup({ onReady }: { onReady?: (ready: boolean) => void }) {
   const { t } = useI18n();
   const video = useRef<HTMLVideoElement>(null);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -17,6 +17,7 @@ export function MediaSetup() {
     try {
       const s = await requestMedia();
       setStarted(true);
+      onReady?.(true);
       setError('');
       if (video.current) video.current.srcObject = s;
       await refresh();
@@ -26,6 +27,7 @@ export function MediaSetup() {
   }
   useEffect(() => {
     if (video.current) video.current.srcObject = currentMedia();
+    if (started) void refresh();
     const listener = () => void refresh();
     navigator.mediaDevices?.addEventListener('devicechange', listener);
     return () => navigator.mediaDevices?.removeEventListener('devicechange', listener);
@@ -33,6 +35,7 @@ export function MediaSetup() {
   async function change(kind: 'videoinput' | 'audioinput', id: string) {
     try {
       const s = await replaceDevice(kind, id);
+      onReady?.(true);
       if (video.current) video.current.srcObject = s;
       await refresh();
     } catch {
@@ -42,7 +45,12 @@ export function MediaSetup() {
   async function output(id: string) {
     const element = video.current as
       (HTMLVideoElement & { setSinkId?: (v: string) => Promise<void> }) | null;
-    await element?.setSinkId?.(id);
+    try {
+      await element?.setSinkId?.(id);
+      setError('');
+    } catch {
+      setError(t('deviceError'));
+    }
   }
   return (
     <section className="media-setup">

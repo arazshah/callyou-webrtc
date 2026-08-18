@@ -6,6 +6,10 @@ import {
   iceCandidateSchema,
   LIMITS,
   liveStrokeSchema,
+  recordingRequestSchema,
+  recordingResponseSchema,
+  recordingStatusSchema,
+  screenShareStatusSchema,
   roomJoinEventSchema,
   signalSchema,
   type ClientToServerEvents,
@@ -195,6 +199,40 @@ export function createSocketServer(
     socket.on('webrtc:restart-ice', () => {
       if (current) socket.to(current.roomId).emit('webrtc:restart-ice');
     });
+    socket.on(
+      'recording:request',
+      authorized(recordingRequestSchema, (data) => {
+        socket.to(current!.roomId).emit('recording:requested', {
+          ...data,
+          participantId: current!.participantId,
+          displayName: current!.displayName,
+        });
+      }),
+    );
+    socket.on(
+      'recording:response',
+      authorized(recordingResponseSchema, (data) => {
+        socket.to(current!.roomId).emit('recording:response', data);
+      }),
+    );
+    socket.on(
+      'recording:status',
+      authorized(recordingStatusSchema, (data) => {
+        socket.to(current!.roomId).emit('recording:status', {
+          ...data,
+          participantId: current!.participantId,
+        });
+      }),
+    );
+    socket.on(
+      'screen:status',
+      authorized(screenShareStatusSchema, (data) => {
+        socket.to(current!.roomId).emit('screen:status', {
+          ...data,
+          participantId: current!.participantId,
+        });
+      }),
+    );
     socket.on('disconnect', async () => {
       if (!current) return;
       const set = participantSockets.get(current.participantId);

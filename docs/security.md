@@ -9,3 +9,7 @@ Never log cookies, session tokens, TURN credentials, SDP, detailed ICE data, or 
 This is transport security, not full application E2EE. WebRTC media is encrypted in transit; HTTPS/WSS protects signaling and whiteboard traffic; the application server can decode board snapshots. Report vulnerabilities privately and keep Node, base images, PostgreSQL, Caddy, and coturn patched.
 
 Imported board images and rendered PDF pages are persisted inside the board snapshot. Chat messages and attachments are validated, size-bounded, relayed only to the current room over Socket.IO, and are not persisted by the application. Users should still avoid sharing sensitive files because the server relays chat traffic and can access board snapshots.
+
+## Local recording consent
+
+Call recording is client-side only. The requester must receive an explicit, matching consent response from the other authenticated room participant before the UI starts `MediaRecorder`. Recording status is shown to both participants, the resulting WebM file is downloaded only to the requester's device, and no recording bytes are sent to or stored by CallYou.

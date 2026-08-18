@@ -7,6 +7,8 @@ import {
   liveStrokeSchema,
   normalizeSlug,
   signalSchema,
+  recordingRequestSchema,
+  recordingResponseSchema,
   slugSchema,
   createRoomSchema,
   joinRoomSchema,
@@ -114,5 +116,17 @@ describe('signaling validation', () => {
       signalSchema.safeParse({ description: { type: 'offer', sdp: 'x'.repeat(128001) } }).success,
     ).toBe(false);
     expect(iceCandidateSchema.safeParse({ candidate: { candidate: 7 } }).success).toBe(false);
+  });
+});
+
+describe('recording consent validation', () => {
+  const requestId = 'd9428888-122b-4e1e-b85b-14d10eaf1676';
+  it('accepts bounded consent messages', () => {
+    expect(recordingRequestSchema.safeParse({ requestId }).success).toBe(true);
+    expect(recordingResponseSchema.safeParse({ requestId, accepted: true }).success).toBe(true);
+  });
+  it('rejects malformed consent messages', () => {
+    expect(recordingRequestSchema.safeParse({ requestId: 'not-an-id' }).success).toBe(false);
+    expect(recordingResponseSchema.safeParse({ requestId, accepted: 'yes' }).success).toBe(false);
   });
 });

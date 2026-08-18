@@ -37,7 +37,10 @@ export async function buildApp(config: Config = loadConfig()) {
     },
   });
   app.addHook('onRequest', async (_request, reply) => {
-    reply.header('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
+    reply.header(
+      'Permissions-Policy',
+      'camera=(self), microphone=(self), display-capture=(self), speaker-selection=(self), geolocation=()',
+    );
   });
   app.addHook('onRequest', async (request, reply) => {
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {

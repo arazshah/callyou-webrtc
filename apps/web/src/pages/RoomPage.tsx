@@ -6,10 +6,10 @@ import { connectSocket, type CallYouSocket } from '../socket';
 import { useI18n } from '../i18n';
 import { Whiteboard } from '../components/Whiteboard';
 import { CallPanel } from '../components/CallPanel';
-import { requestMedia } from '../media';
 import { ConfirmDialog } from '../components/Modal';
 import { HelpModal } from '../components/HelpModal';
 import { ChatPanel } from '../components/ChatPanel';
+import { PreJoin } from '../components/PreJoin';
 type Identity = {
   participantId: string;
   role: 'host' | 'guest';
@@ -21,7 +21,10 @@ export function RoomPage() {
   const { slug = '' } = useParams();
   const { t, lang, toggle } = useI18n();
   const navigate = useNavigate();
-  const [status, setStatus] = useState<'loading' | 'join' | 'room' | 'ended' | 'error'>('loading');
+  const [status, setStatus] = useState<'loading' | 'join' | 'prejoin' | 'room' | 'ended' | 'error'>(
+    'loading',
+  );
+  const [prejoinName, setPrejoinName] = useState('');
   const [error, setError] = useState('');
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [copied, setCopied] = useState(false);
@@ -34,7 +37,12 @@ export function RoomPage() {
     void api
       .status(slug)
       .then((s) => {
-        if (alive) setStatus(s.authenticated ? 'room' : 'join');
+        if (alive) {
+          if (s.authenticated) {
+            setPrejoinName(s.displayName ?? '');
+            setStatus('prejoin');
+          } else setStatus('join');
+        }
       })
       .catch(() => alive && setStatus('join'));
     return () => {
@@ -71,9 +79,10 @@ export function RoomPage() {
     setError('');
     const data = Object.fromEntries(new FormData(event.currentTarget));
     try {
-      void requestMedia().catch(() => null);
-      await api.joinRoom(slug, { displayName: data.displayName });
-      setStatus('room');
+      const displayName = String(data.displayName ?? '').trim();
+      await api.joinRoom(slug, { displayName });
+      setPrejoinName(displayName);
+      setStatus('prejoin');
     } catch (e) {
       setError(e instanceof ApiError && e.code === 'room_full' ? t('roomFull') : t('unavailable'));
     }
@@ -122,6 +131,20 @@ export function RoomPage() {
         <a href="/" className="primary">
           {t('createRoom')}
         </a>
+      </main>
+    );
+  if (status === 'prejoin')
+    return (
+      <main className="prejoin-page" dir={lang === 'fa' ? 'rtl' : 'ltr'}>
+        <header className="topbar">
+          <a className="brand" href="/">
+            <span>Call</span>You
+          </a>
+          <button className="language" onClick={toggle}>
+            {t('language')}
+          </button>
+        </header>
+        <PreJoin displayName={prejoinName} onEnter={() => setStatus('room')} />
       </main>
     );
   if (status === 'join')
@@ -213,6 +236,7 @@ export function RoomPage() {
               localName={identity.displayName}
               peerName={identity.peers[0]?.displayName}
               onLeave={() => void leave()}
+              onNotice={notify}
             />
             <ChatPanel socket={socket} participantId={identity.participantId} onError={notify} />
           </>

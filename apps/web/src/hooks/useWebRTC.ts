@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CallYouSocket } from '../socket';
 import { api } from '../api';
 import { currentMedia, requestMedia, stopMedia } from '../media';
-export type CallState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'failed';
+import { EMPTY_CALL_QUALITY, readCallQuality, type CallQuality } from '../callQuality';
+import { downloadRecording, startCallRecording, type CallRecording } from '../recording';
+export type CallState =
+  'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'failed';
 export function useWebRTC(
   socket: CallYouSocket | null,
   slug: string,
@@ -10,6 +13,10 @@ export function useWebRTC(
   initialPeerId?: string,
 ) {
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const recordingRef = useRef<CallRecording | null>(null);
+  const restartTimer = useRef<number | null>(null);
+  const restartAttempts = useRef(0);
   const makingOffer = useRef(false);
   const ignoreOffer = useRef(false);
   const remoteVideo = useRef<HTMLVideoElement>(null);
@@ -18,16 +25,37 @@ export function useWebRTC(
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const [sharingScreen, setSharingScreen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [quality, setQuality] = useState<CallQuality>(EMPTY_CALL_QUALITY);
   const peerId = useRef(initialPeerId);
   const attachLocal = useCallback((pc: RTCPeerConnection) => {
     const media = currentMedia();
-    if (localVideo.current) localVideo.current.srcObject = media;
-    for (const track of media?.getTracks() ?? []) {
+    const screen = screenStreamRef.current;
+    if (localVideo.current) localVideo.current.srcObject = screen ?? media;
+    const tracks = [
+      media?.getAudioTracks()[0],
+      screen?.getVideoTracks()[0] ?? media?.getVideoTracks()[0],
+    ].filter((track): track is MediaStreamTrack => Boolean(track));
+    for (const track of tracks) {
       const sender = pc.getSenders().find((s) => s.track?.kind === track.kind);
       if (sender) void sender.replaceTrack(track);
-      else pc.addTrack(track, media!);
+      else pc.addTrack(track, track.kind === 'video' && screen ? screen : media!);
     }
   }, []);
+  const clearRestartTimer = useCallback(() => {
+    if (restartTimer.current != null) window.clearTimeout(restartTimer.current);
+    restartTimer.current = null;
+  }, []);
+  const finishRecording = useCallback(async () => {
+    const active = recordingRef.current;
+    if (!active) return false;
+    recordingRef.current = null;
+    const blob = await active.stop();
+    downloadRecording(blob, slug);
+    setRecording(false);
+    return true;
+  }, [slug]);
   const ensurePeer = useCallback(
     async (id?: string) => {
       if (id) peerId.current = id;
@@ -59,18 +87,31 @@ export function useWebRTC(
           });
       };
       pc.onconnectionstatechange = () => {
-        setState(
-          pc.connectionState === 'connected'
-            ? 'connected'
-            : pc.connectionState === 'failed'
-              ? 'failed'
-              : pc.connectionState === 'disconnected'
-                ? 'disconnected'
-                : 'connecting',
-        );
-        if (pc.connectionState === 'failed') {
-          pc.restartIce();
-          socket?.emit('webrtc:restart-ice');
+        if (pc.connectionState === 'connected') {
+          clearRestartTimer();
+          restartAttempts.current = 0;
+          setState('connected');
+        } else if (pc.connectionState === 'disconnected') {
+          setState('reconnecting');
+          clearRestartTimer();
+          restartTimer.current = window.setTimeout(() => {
+            if (pc.connectionState !== 'connected') {
+              restartAttempts.current += 1;
+              pc.restartIce();
+              socket?.emit('webrtc:restart-ice');
+            }
+          }, 2500);
+        } else if (pc.connectionState === 'failed') {
+          setState(restartAttempts.current >= 3 ? 'failed' : 'reconnecting');
+          if (restartAttempts.current < 3) {
+            restartAttempts.current += 1;
+            pc.restartIce();
+            socket?.emit('webrtc:restart-ice');
+          }
+        } else if (pc.connectionState === 'closed') {
+          setState('disconnected');
+        } else {
+          setState('connecting');
         }
       };
       pc.onnegotiationneeded = async () => {
@@ -87,12 +128,14 @@ export function useWebRTC(
       };
       return pc;
     },
-    [attachLocal, slug, socket],
+    [attachLocal, clearRestartTimer, slug, socket],
   );
   useEffect(() => {
     if (!socket) return;
     const onJoined = ({ participantId: id }: { participantId: string }) => void ensurePeer(id);
     const onLeft = () => {
+      clearRestartTimer();
+      if (recordingRef.current) void finishRecording();
       pcRef.current?.close();
       pcRef.current = null;
       setState('disconnected');
@@ -173,10 +216,45 @@ export function useWebRTC(
       socket.off('webrtc:restart-ice', onRestart);
       window.removeEventListener('online', network);
       window.removeEventListener('callyou:media-changed', mediaChanged);
+      clearRestartTimer();
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+      screenStreamRef.current = null;
+      if (recordingRef.current) void finishRecording();
       pcRef.current?.close();
       pcRef.current = null;
     };
-  }, [attachLocal, ensurePeer, initialPeerId, participantId, socket]);
+  }, [
+    attachLocal,
+    clearRestartTimer,
+    ensurePeer,
+    finishRecording,
+    initialPeerId,
+    participantId,
+    socket,
+  ]);
+  useEffect(() => {
+    if (state !== 'connected' || !pcRef.current) {
+      if (state !== 'reconnecting') setQuality(EMPTY_CALL_QUALITY);
+      return;
+    }
+    let active = true;
+    const update = async () => {
+      const pc = pcRef.current;
+      if (!pc) return;
+      try {
+        const next = await readCallQuality(pc);
+        if (active) setQuality(next);
+      } catch {
+        if (active) setQuality(EMPTY_CALL_QUALITY);
+      }
+    };
+    void update();
+    const interval = window.setInterval(() => void update(), 3000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [state]);
   const startMedia = useCallback(async () => {
     const media = currentMedia() ?? (await requestMedia());
     if (localVideo.current) localVideo.current.srcObject = media;
@@ -197,7 +275,62 @@ export function useWebRTC(
       setCameraOff(!track.enabled);
     }
   };
+  const stopScreenShare = useCallback(async () => {
+    const screen = screenStreamRef.current;
+    if (!screen) return;
+    screenStreamRef.current = null;
+    screen.getTracks().forEach((track) => track.stop());
+    const camera = currentMedia()?.getVideoTracks()[0] ?? null;
+    const sender = pcRef.current?.getSenders().find((item) => item.track?.kind === 'video');
+    if (sender) await sender.replaceTrack(camera);
+    if (localVideo.current) localVideo.current.srcObject = currentMedia();
+    setSharingScreen(false);
+  }, []);
+  const startScreenShare = useCallback(async () => {
+    if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('screen_share_not_supported');
+    const screen = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: 15, max: 30 } },
+      audio: false,
+    });
+    await stopScreenShare();
+    screenStreamRef.current = screen;
+    const track = screen.getVideoTracks()[0];
+    if (!track) throw new Error('screen_share_unavailable');
+    track.addEventListener('ended', () => void stopScreenShare(), { once: true });
+    try {
+      const pc = pcRef.current;
+      const sender = pc?.getSenders().find((item) => item.track?.kind === 'video');
+      if (sender) await sender.replaceTrack(track);
+      else if (pc) pc.addTrack(track, screen);
+      if (localVideo.current) localVideo.current.srcObject = screen;
+      setSharingScreen(true);
+    } catch (error) {
+      screenStreamRef.current = null;
+      screen.getTracks().forEach((item) => item.stop());
+      if (localVideo.current) localVideo.current.srcObject = currentMedia();
+      throw error;
+    }
+  }, [stopScreenShare]);
+  const startRecording = useCallback(async () => {
+    if (recordingRef.current) return;
+    const localElement = localVideo.current;
+    const remoteElement = remoteVideo.current;
+    const remote = remoteElement?.srcObject;
+    if (!localElement || !remoteElement || !(remote instanceof MediaStream))
+      throw new Error('remote_media_unavailable');
+    recordingRef.current = await startCallRecording({
+      localVideo: localElement,
+      remoteVideo: remoteElement,
+      localAudio: currentMedia(),
+      remoteAudio: remote,
+    });
+    setRecording(true);
+  }, []);
   const stop = () => {
+    if (recordingRef.current) void finishRecording();
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    setSharingScreen(false);
     pcRef.current?.close();
     pcRef.current = null;
     stopMedia();
@@ -209,9 +342,16 @@ export function useWebRTC(
     muted,
     cameraOff,
     autoplayBlocked,
+    sharingScreen,
+    recording,
+    quality,
     startMedia,
     toggleMute,
     toggleCamera,
+    startScreenShare,
+    stopScreenShare,
+    startRecording,
+    stopRecording: finishRecording,
     stop,
     playRemote: () => remoteVideo.current?.play().then(() => setAutoplayBlocked(false)),
   };

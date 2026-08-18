@@ -162,6 +162,12 @@ export const iceCandidateSchema = z.object({
     usernameFragment: z.string().max(256).nullable().optional(),
   }),
 });
+export const recordingRequestSchema = z.object({ requestId: z.uuid() }).strict();
+export const recordingResponseSchema = z
+  .object({ requestId: z.uuid(), accepted: z.boolean() })
+  .strict();
+export const recordingStatusSchema = z.object({ active: z.boolean() }).strict();
+export const screenShareStatusSchema = z.object({ active: z.boolean() }).strict();
 
 export interface ServerToClientEvents {
   'room:joined': (data: {
@@ -196,6 +202,14 @@ export interface ServerToClientEvents {
   'webrtc:answer': (data: z.infer<typeof signalSchema>) => void;
   'webrtc:ice-candidate': (data: z.infer<typeof iceCandidateSchema>) => void;
   'webrtc:restart-ice': () => void;
+  'recording:requested': (data: {
+    requestId: string;
+    participantId: string;
+    displayName: string;
+  }) => void;
+  'recording:response': (data: { requestId: string; accepted: boolean }) => void;
+  'recording:status': (data: { participantId: string; active: boolean }) => void;
+  'screen:status': (data: { participantId: string; active: boolean }) => void;
 }
 export interface ClientToServerEvents {
   'room:join': (
@@ -215,4 +229,8 @@ export interface ClientToServerEvents {
   'webrtc:answer': (data: z.infer<typeof signalSchema>) => void;
   'webrtc:ice-candidate': (data: z.infer<typeof iceCandidateSchema>) => void;
   'webrtc:restart-ice': () => void;
+  'recording:request': (data: z.infer<typeof recordingRequestSchema>) => void;
+  'recording:response': (data: z.infer<typeof recordingResponseSchema>) => void;
+  'recording:status': (data: z.infer<typeof recordingStatusSchema>) => void;
+  'screen:status': (data: z.infer<typeof screenShareStatusSchema>) => void;
 }

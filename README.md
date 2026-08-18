@@ -7,6 +7,8 @@ CallYou is a self-hosted, private, two-person video room with a shared real-time
 - One-click, name-only rooms with readable cryptographically random links and unguessable server-issued sessions
 - Exactly two active participant sessions, with an atomic PostgreSQL admission check and reconnect grace period
 - Direct WebRTC audio/video with perfect negotiation, trickle ICE, ICE restart, and short-lived coturn credentials
+- Pre-join camera/microphone preview, screen sharing, live connection-quality feedback, and automatic ICE recovery
+- Consent-gated local call recording that downloads directly to the recorder's device
 - Yjs object-level board synchronization and durable PostgreSQL snapshots
 - Pen, highlighter, eraser, line, arrow, rectangle, ellipse, text, select/move, pan, zoom, undo/redo, and host clear
 - Image and PDF page import for live teaching and annotation directly on the shared board
@@ -15,7 +17,7 @@ CallYou is a self-hosted, private, two-person video room with a shared real-time
 - Responsive whiteboard-first UI, separate participant video tiles, accessible modals, Persian RTL, English, keyboard controls, and touch/stylus Pointer Events
 - Structured redacted logs, readiness/liveness endpoints, strict validation, security headers, rate limits, room expiry
 
-Non-goals include accounts, public rooms, group calls, screen sharing, recording, persistent chat history, calendars, payments, and AI features.
+Non-goals include accounts, public rooms, group calls, server-side recording, persistent chat history, calendars, payments, and AI features.
 
 ## Architecture
 
@@ -98,7 +100,7 @@ Open a normal and private browser window. Create a room, copy the link, join in 
 
 ## Security and privacy
 
-Room links act as invitations and should only be shared with the intended participant. Session, cookie, SDP and credential fields are redacted or omitted from logs. Cookies are HTTP-only, SameSite strict, and Secure in production. Every socket payload is schema-validated and bound to its authenticated room. Media is encrypted in transit by WebRTC and is never recorded. HTTPS/WSS encrypts signaling and board traffic in transit, but the server can access persisted board data. See [security.md](docs/security.md).
+Room links act as invitations and should only be shared with the intended participant. Session, cookie, SDP and credential fields are redacted or omitted from logs. Cookies are HTTP-only, SameSite strict, and Secure in production. Every socket payload is schema-validated and bound to its authenticated room. Media is encrypted in transit by WebRTC and is not recorded or stored by the server. A participant can create a local recording only after the other participant explicitly approves the in-room request. HTTPS/WSS encrypts signaling and board traffic in transit, but the server can access persisted board data. See [security.md](docs/security.md).
 
 ## Backup, restore, and upgrades
 
