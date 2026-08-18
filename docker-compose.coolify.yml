@@ -1,7 +1,67 @@
-server:
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-callyou}
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_64_POSTGRES:?Set SERVICE_PASSWORD_64_POSTGRES}
+      POSTGRES_DB: ${POSTGRES_DB:-callyou}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          pg_isready
+          -U "$${POSTGRES_USER}"
+          -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+    networks:
+      - callyou
+
+
+  coturn:
+    image: coturn/coturn:4.6.3-alpine
+    restart: unless-stopped
+
+    command:
+      - turnserver
+      - --log-file=stdout
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${SERVICE_BASE64_64_TURN:?Set SERVICE_BASE64_64_TURN}
+      - --realm=${TURN_REALM:?Set TURN_REALM}
+      - --external-ip=${TURN_PUBLIC_IP:?Set TURN_PUBLIC_IP}
+      - --listening-port=3478
+      - --min-port=${TURN_MIN_PORT:-49160}
+      - --max-port=${TURN_MAX_PORT:-49200}
+      - --no-multicast-peers
+      - --no-cli
+      - --stale-nonce=600
+      - --total-quota=1200
+      - --bps-capacity=0
+
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "${TURN_MIN_PORT:-49160}-${TURN_MAX_PORT:-49200}:${TURN_MIN_PORT:-49160}-${TURN_MAX_PORT:-49200}/udp"
+
+    networks:
+      - callyou
+
+
+  server:
     build:
       context: .
       dockerfile: Dockerfile.server
+
     restart: unless-stopped
 
     environment:
@@ -11,10 +71,12 @@ server:
 
       APP_URL: ${APP_URL:?Set APP_URL}
 
-      DATABASE_URL: postgres://${POSTGRES_USER:-callyou}:${SERVICE_PASSWORD_64_POSTGRES}@postgres:5432/${POSTGRES_DB:-callyou}
+      DATABASE_URL: >-
+        postgres://${POSTGRES_USER:-callyou}:${SERVICE_PASSWORD_64_POSTGRES:?Set SERVICE_PASSWORD_64_POSTGRES}@postgres:5432/${POSTGRES_DB:-callyou}
 
       SESSION_SECRET: ${SERVICE_BASE64_64_SESSION:?Set SERVICE_BASE64_64_SESSION}
       SESSION_HOURS: ${SESSION_HOURS:-24}
+
       ROOM_INACTIVITY_HOURS: ${ROOM_INACTIVITY_HOURS:-24}
       RECONNECT_GRACE_SECONDS: ${RECONNECT_GRACE_SECONDS:-30}
 
@@ -36,12 +98,55 @@ server:
         - node
         - -e
         - >-
-          fetch('http://127.0.0.1:3000/api/health')
-          .then(r => {
-            if (!r.ok) process.exit(1);
-          })
-          .catch(() => process.exit(1))
+          const net=require('node:net');
+          const socket=net.createConnection({host:'127.0.0.1',port:3000});
+          const timer=setTimeout(()=>{socket.destroy();process.exit(1)},4000);
+          socket.once('connect',()=>{clearTimeout(timer);socket.end();process.exit(0)});
+          socket.once('error',()=>{clearTimeout(timer);process.exit(1)});
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 12
       start_period: 30s
+
+    networks:
+      - callyou
+
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web.coolify
+
+    restart: unless-stopped
+
+    depends_on:
+      server:
+        condition: service_healthy
+
+    expose:
+      - "80"
+
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --no-verbose
+        - --tries=1
+        - --spider
+        - http://127.0.0.1/
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    networks:
+      - callyou
+
+
+volumes:
+  postgres_data:
+
+
+networks:
+  callyou:
+    driver: bridge
