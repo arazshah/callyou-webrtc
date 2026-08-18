@@ -66,23 +66,40 @@ services:
   coturn:
     image: coturn/coturn:4.6.3
     restart: unless-stopped
+
+    environment:
+      TURN_SHARED_SECRET: ${SERVICE_BASE64_64_TURN}
+      TURN_REALM: ${TURN_REALM}
+      TURN_PUBLIC_IP: ${TURN_PUBLIC_IP}
+      TURN_MIN_PORT: ${TURN_MIN_PORT:-49160}
+      TURN_MAX_PORT: ${TURN_MAX_PORT:-49200}
+
     ports:
       - '3478:3478/tcp'
       - '3478:3478/udp'
       - '${TURN_MIN_PORT:-49160}-${TURN_MAX_PORT:-49200}:${TURN_MIN_PORT:-49160}-${TURN_MAX_PORT:-49200}/udp'
+
+    entrypoint:
+      - /bin/sh
+      - -ec
+
     command:
-      - -n
-      - --log-file=stdout
-      - --fingerprint
-      - --use-auth-secret
-      - --static-auth-secret=${SERVICE_BASE64_64_TURN}
-      - --realm=${TURN_REALM:?Set TURN_REALM to the TURN hostname}
-      - --external-ip=${TURN_PUBLIC_IP:?Set TURN_PUBLIC_IP to the server public IP}
-      - --listening-port=3478
-      - --min-port=${TURN_MIN_PORT:-49160}
-      - --max-port=${TURN_MAX_PORT:-49200}
-      - --no-multicast-peers
-      - --no-cli
+      - |
+        exec turnserver \
+          -n \
+          --log-file=stdout \
+          --fingerprint \
+          --use-auth-secret \
+          "--static-auth-secret=$${TURN_SHARED_SECRET}" \
+          "--realm=$${TURN_REALM}" \
+          "--external-ip=$${TURN_PUBLIC_IP}" \
+          --listening-port=3478 \
+          "--min-port=$${TURN_MIN_PORT}" \
+          "--max-port=$${TURN_MAX_PORT}" \
+          --no-multicast-peers \
+          --no-cli \
+          --no-tls \
+          --no-dtls
 
 volumes:
   postgres_data:
