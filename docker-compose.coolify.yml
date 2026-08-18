@@ -42,6 +42,8 @@ services:
       - --listening-port=3478
       - --min-port=${TURN_MIN_PORT:-49160}
       - --max-port=${TURN_MAX_PORT:-49200}
+      - --no-tls
+      - --no-dtls
       - --no-multicast-peers
       - --no-cli
       - --stale-nonce=600
