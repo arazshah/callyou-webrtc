@@ -11,7 +11,8 @@ CallYou is a self-hosted, private, two-person video room with a shared real-time
 - Consent-gated local call recording that downloads directly to the recorder's device
 - Yjs object-level board synchronization and durable PostgreSQL snapshots
 - Pen, highlighter, eraser, line, arrow, rectangle, ellipse, text, select/move, pan, zoom, undo/redo, and host clear
-- Image and PDF page import for live teaching and annotation directly on the shared board
+- Multi-page boards, presenter-follow mode, pinch zoom, laser pointer, and image/PDF fit, rotation, locking, duplication, and layer controls
+- Image and PDF page import for live teaching and annotation directly on the shared board, with SVG/PNG export and print-to-PDF
 - Ephemeral in-room chat with text, emoji, image previews, and bounded file transfer
 - Live remote strokes and named collaborator cursors
 - Responsive whiteboard-first UI, separate participant video tiles, accessible modals, Persian RTL, English, keyboard controls, and touch/stylus Pointer Events

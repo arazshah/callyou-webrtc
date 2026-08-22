@@ -11,22 +11,35 @@ import {
   ChevronDown,
   ChevronUp,
   Circle,
+  Copy,
+  Crosshair,
+  Download,
+  FileDown,
+  Archive,
+  Eye,
+  EyeOff,
   Highlighter,
   ImagePlus,
+  Lock,
   LoaderCircle,
+  Maximize2,
   Minus,
   MousePointer2,
   Move,
   Pen,
+  Plus,
   Redo2,
+  RotateCw,
+  WandSparkles,
   Square,
   Trash2,
   Type,
+  Unlock,
   Undo2,
 } from 'lucide-react';
 import { LIMITS, type BoardElement } from '@callyou/shared';
 import type { CallYouSocket } from '../socket';
-import { useBoard } from '../hooks/useBoard';
+import { DEFAULT_PAGE_ID, useBoard } from '../hooks/useBoard';
 import { useI18n, type MessageKey } from '../i18n';
 import { TextDialog } from './Modal';
 import { prepareBoardAssets } from '../boardAssets';
@@ -40,7 +53,8 @@ type Tool =
   | 'rectangle'
   | 'ellipse'
   | 'text'
-  | 'pan';
+  | 'pan'
+  | 'laser';
 type Point = { x: number; y: number; pressure?: number | undefined };
 const tools: Array<{ id: Tool; icon: typeof Pen; label: MessageKey }> = [
   { id: 'select', icon: MousePointer2, label: 'select' },
@@ -53,6 +67,7 @@ const tools: Array<{ id: Tool; icon: typeof Pen; label: MessageKey }> = [
   { id: 'ellipse', icon: Circle, label: 'ellipse' },
   { id: 'text', icon: Type, label: 'text' },
   { id: 'pan', icon: Move, label: 'pan' },
+  { id: 'laser', icon: Crosshair, label: 'laserPointer' },
 ];
 function path(points: Point[], ox = 0, oy = 0) {
   if (!points.length) return '';
@@ -141,6 +156,7 @@ function renderElement(el: BoardElement, selected = false) {
         height={el.height}
         preserveAspectRatio="xMidYMid meet"
         opacity={el.opacity}
+        transform={`rotate(${el.rotation ?? 0} ${el.x + (el.width ?? 0) / 2} ${el.y + (el.height ?? 0) / 2})`}
         data-element-id={el.id}
       />
     );
@@ -162,7 +178,7 @@ function renderElement(el: BoardElement, selected = false) {
   return (
     <g key={el.id} className="board-element">
       {node}
-      {selected && (
+      {selected && !el.locked && (
         <>
           <rect
             className="selection-box"
@@ -177,7 +193,7 @@ function renderElement(el: BoardElement, selected = false) {
             data-resize-id={el.id}
             cx={box.x + box.width + 6}
             cy={box.y + box.height + 6}
-            r="6"
+            r="10"
           />
         </>
       )}
@@ -206,6 +222,21 @@ export function Whiteboard({
   const [width, setWidth] = useState(3);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: -500, y: -350 });
+  const [followPresenter, setFollowPresenter] = useState(false);
+  const [smartShapes, setSmartShapes] = useState(false);
+  const [activePageId, setActivePageId] = useState(DEFAULT_PAGE_ID);
+  const [presenter, setPresenter] = useState<{ participantId: string; displayName: string } | null>(
+    null,
+  );
+  const [remoteLaser, setRemoteLaser] = useState<{
+    participantId: string;
+    displayName: string;
+    color: string;
+    pageId?: string | undefined;
+    x: number;
+    y: number;
+    active: boolean;
+  } | null>(null);
   const [draft, setDraft] = useState<BoardElement | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -219,7 +250,16 @@ export function Whiteboard({
     mode: 'draw' | 'move' | 'resize' | 'pan';
   } | null>(null);
   const remoteStrokes = useRef(
-    new Map<string, { points: Point[]; color: string; width: number; opacity: number }>(),
+    new Map<
+      string,
+      {
+        points: Point[];
+        color: string;
+        width: number;
+        opacity: number;
+        pageId?: string | undefined;
+      }
+    >(),
   );
   const cursors = useRef(
     new Map<string, { x: number; y: number; name: string; color: string; seen: number }>(),
@@ -227,6 +267,18 @@ export function Whiteboard({
   const [, render] = useState(0);
   const lastCursorEmit = useRef(0);
   const lastStrokeEmit = useRef(0);
+  const viewportTimer = useRef<number | null>(null);
+  const followRef = useRef(false);
+  const suppressViewportEmit = useRef(false);
+  const activePointers = useRef(new Map<number, { clientX: number; clientY: number }>());
+  const pinchStart = useRef<{
+    distance: number;
+    centerX: number;
+    centerY: number;
+    zoom: number;
+    pan: Point;
+  } | null>(null);
+  const remoteViewport = useRef<{ centerX: number; centerY: number; zoom: number } | null>(null);
   const world = useCallback(
     (event: { clientX: number; clientY: number }): Point => {
       const box = svg.current?.getBoundingClientRect();
@@ -237,10 +289,19 @@ export function Whiteboard({
     },
     [pan, zoom],
   );
+  const visibleElements = board.elements
+    .filter((element) => (element.pageId ?? DEFAULT_PAGE_ID) === activePageId)
+    .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+  useEffect(() => {
+    if (board.pages.some((page) => page.id === activePageId)) return;
+    setActivePageId(board.pages[0]?.id ?? DEFAULT_PAGE_ID);
+    setSelected(null);
+  }, [activePageId, board.pages]);
   useEffect(() => {
     const stroke = (data: {
       participantId: string;
       id: string;
+      pageId?: string | undefined;
       points: Point[];
       color: string;
       width: number;
@@ -269,9 +330,36 @@ export function Whiteboard({
       });
       render((v) => v + 1);
     };
+    const viewport = (data: {
+      participantId: string;
+      displayName: string;
+      centerX: number;
+      centerY: number;
+      zoom: number;
+    }) => {
+      remoteViewport.current = data;
+      setPresenter({ participantId: data.participantId, displayName: data.displayName });
+      if (!followRef.current) return;
+      const width = (svg.current?.clientWidth ?? 1200) / data.zoom;
+      const height = (svg.current?.clientHeight ?? 800) / data.zoom;
+      suppressViewportEmit.current = true;
+      setZoom(data.zoom);
+      setPan({ x: data.centerX - width / 2, y: data.centerY - height / 2 });
+    };
     socket.on('board:live-stroke', stroke);
     socket.on('board:live-stroke-end', end);
     socket.on('participant:cursor', cursor);
+    socket.on('board:viewport', viewport);
+    const laser = (data: {
+      participantId: string;
+      displayName: string;
+      color: string;
+      pageId?: string | undefined;
+      x: number;
+      y: number;
+      active: boolean;
+    }) => setRemoteLaser(data);
+    socket.on('board:laser', laser);
     const timer = setInterval(() => {
       for (const [id, c] of cursors.current)
         if (Date.now() - c.seen > 5000) cursors.current.delete(id);
@@ -282,8 +370,46 @@ export function Whiteboard({
       socket.off('board:live-stroke', stroke);
       socket.off('board:live-stroke-end', end);
       socket.off('participant:cursor', cursor);
+      socket.off('board:viewport', viewport);
+      socket.off('board:laser', laser);
     };
   }, [socket]);
+  useEffect(() => {
+    if (suppressViewportEmit.current) {
+      suppressViewportEmit.current = false;
+      return;
+    }
+    if (viewportTimer.current != null) window.clearTimeout(viewportTimer.current);
+    viewportTimer.current = window.setTimeout(() => {
+      const width = (svg.current?.clientWidth ?? 1200) / zoom;
+      const height = (svg.current?.clientHeight ?? 800) / zoom;
+      socket.emit('board:viewport', {
+        centerX: pan.x + width / 2,
+        centerY: pan.y + height / 2,
+        zoom,
+      });
+      viewportTimer.current = null;
+    }, 80);
+    return () => {
+      if (viewportTimer.current != null) window.clearTimeout(viewportTimer.current);
+    };
+  }, [pan, socket, zoom]);
+  function stopFollowing() {
+    followRef.current = false;
+    setFollowPresenter(false);
+  }
+  function toggleFollowPresenter() {
+    const next = !followPresenter;
+    setFollowPresenter(next);
+    followRef.current = next;
+    const latest = remoteViewport.current;
+    if (next && latest) {
+      const width = (svg.current?.clientWidth ?? 1200) / latest.zoom;
+      const height = (svg.current?.clientHeight ?? 800) / latest.zoom;
+      setZoom(latest.zoom);
+      setPan({ x: latest.centerX - width / 2, y: latest.centerY - height / 2 });
+    }
+  }
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
@@ -328,6 +454,32 @@ export function Whiteboard({
   }
   function pointerDown(event: ReactPointerEvent<SVGSVGElement>) {
     if (event.button !== 0) return;
+    if (event.pointerType === 'touch') {
+      activePointers.current.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+      if (activePointers.current.size === 2) {
+        const points = [...activePointers.current.values()];
+        const first = points[0]!;
+        const second = points[1]!;
+        pinchStart.current = {
+          distance: Math.max(
+            1,
+            Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY),
+          ),
+          centerX: (first.clientX + second.clientX) / 2,
+          centerY: (first.clientY + second.clientY) / 2,
+          zoom,
+          pan,
+        };
+        action.current = null;
+        if (followPresenter) stopFollowing();
+        event.preventDefault();
+        return;
+      }
+    }
+    if (followPresenter) stopFollowing();
     svg.current?.setPointerCapture(event.pointerId);
     const p = world(event);
     const id = targetId(event);
@@ -339,14 +491,18 @@ export function Whiteboard({
       setTextDialog({ point: p });
       return;
     }
+    if (tool === 'laser') {
+      socket.emit('board:laser', { pageId: activePageId, x: p.x, y: p.y, active: true });
+      return;
+    }
     if (tool === 'pan') {
       action.current = { start: p, mode: 'pan' };
       return;
     }
     if (tool === 'select') {
       setSelected(id);
-      const original = board.elements.find((e) => e.id === id);
-      if (original)
+      const original = visibleElements.find((e) => e.id === id);
+      if (original && !original.locked)
         action.current = {
           start: p,
           original,
@@ -358,6 +514,7 @@ export function Whiteboard({
     const element: BoardElement = {
       id: crypto.randomUUID(),
       type,
+      pageId: activePageId,
       createdBy: participantId,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -374,8 +531,50 @@ export function Whiteboard({
     action.current = { start: p, mode: 'draw' };
   }
   function pointerMove(event: ReactPointerEvent<SVGSVGElement>) {
+    if (event.pointerType === 'touch' && activePointers.current.has(event.pointerId)) {
+      activePointers.current.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+      if (activePointers.current.size >= 2 && pinchStart.current) {
+        const points = [...activePointers.current.values()];
+        const first = points[0]!;
+        const second = points[1]!;
+        const distance = Math.max(
+          1,
+          Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY),
+        );
+        const centerX = (first.clientX + second.clientX) / 2;
+        const centerY = (first.clientY + second.clientY) / 2;
+        const box = svg.current?.getBoundingClientRect();
+        const localX = centerX - (box?.left ?? 0);
+        const localY = centerY - (box?.top ?? 0);
+        const nextZoom = Math.max(
+          0.2,
+          Math.min(5, pinchStart.current.zoom * (distance / pinchStart.current.distance)),
+        );
+        const worldCenter = {
+          x:
+            (localX - (box?.width ?? 0) / 2) / pinchStart.current.zoom +
+            pinchStart.current.pan.x +
+            (box?.width ?? 0) / (2 * pinchStart.current.zoom),
+          y:
+            (localY - (box?.height ?? 0) / 2) / pinchStart.current.zoom +
+            pinchStart.current.pan.y +
+            (box?.height ?? 0) / (2 * pinchStart.current.zoom),
+        };
+        setZoom(nextZoom);
+        setPan({ x: worldCenter.x - localX / nextZoom, y: worldCenter.y - localY / nextZoom });
+        event.preventDefault();
+        return;
+      }
+    }
     const p = world(event);
     const now = performance.now();
+    if (tool === 'laser') {
+      socket.emit('board:laser', { pageId: activePageId, x: p.x, y: p.y, active: true });
+      return;
+    }
     if (now - lastCursorEmit.current > 40) {
       socket.emit('participant:cursor', p);
       lastCursorEmit.current = now;
@@ -409,14 +608,19 @@ export function Whiteboard({
           pressure: point.pressure,
         }));
         board.put({ ...original, x: 0, y: 0, points, updatedAt: Date.now() });
-      } else if (original.type === 'image')
+      } else if (original.type === 'image') {
+        const originalWidth = Math.max(1, original.width ?? 1);
+        const originalHeight = Math.max(1, original.height ?? 1);
+        const ratio = originalWidth / originalHeight;
+        const nextWidth = Math.max(80, p.x - original.x);
+        const nextHeight = event.shiftKey ? nextWidth / ratio : Math.max(80, p.y - original.y);
         board.put({
           ...original,
-          width: Math.max(80, p.x - original.x),
-          height: Math.max(80, p.y - original.y),
+          width: nextWidth,
+          height: nextHeight,
           updatedAt: Date.now(),
         });
-      else
+      } else
         board.put({
           ...original,
           width: p.x - original.x,
@@ -436,6 +640,7 @@ export function Whiteboard({
       if (now - lastStrokeEmit.current > 32) {
         socket.emit('board:live-stroke', {
           id: draft.id,
+          pageId: activePageId,
           points: points.slice(-256),
           color: draft.strokeColor,
           width: draft.strokeWidth,
@@ -446,21 +651,251 @@ export function Whiteboard({
     } else setDraft({ ...draft, width: p.x - current.start.x, height: p.y - current.start.y });
   }
   function pointerUp(event: ReactPointerEvent<SVGSVGElement>) {
-    svg.current?.releasePointerCapture(event.pointerId);
+    if (event.pointerType === 'touch') {
+      activePointers.current.delete(event.pointerId);
+      if (activePointers.current.size < 2) pinchStart.current = null;
+    }
+    if (tool === 'laser') {
+      const p = world(event);
+      socket.emit('board:laser', { pageId: activePageId, x: p.x, y: p.y, active: false });
+    }
+    if (svg.current?.hasPointerCapture(event.pointerId))
+      svg.current.releasePointerCapture(event.pointerId);
     if (draft) {
-      board.put({ ...draft, updatedAt: Date.now() });
+      board.put(smartShapes ? recognizeShape(draft) : { ...draft, updatedAt: Date.now() });
       socket.emit('board:live-stroke-end', { id: draft.id });
       setDraft(null);
     }
     action.current = null;
   }
+  function recognizeShape(element: BoardElement): BoardElement {
+    if (element.type !== 'pen' || !element.points || element.points.length < 5)
+      return { ...element, updatedAt: Date.now() };
+    const points = element.points;
+    const first = points[0]!;
+    const last = points.at(-1)!;
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const width = Math.max(20, Math.max(...xs) - minX);
+    const height = Math.max(20, Math.max(...ys) - minY);
+    const diagonal = Math.hypot(width, height);
+    const closed = Math.hypot(last.x - first.x, last.y - first.y) < diagonal * 0.28;
+    const lineDistance = points.reduce((max, point) => {
+      const length = Math.hypot(last.x - first.x, last.y - first.y) || 1;
+      return Math.max(
+        max,
+        Math.abs(
+          (point.x - first.x) * (last.y - first.y) - (point.y - first.y) * (last.x - first.x),
+        ) / length,
+      );
+    }, 0);
+    if (!closed && lineDistance < Math.max(12, diagonal * 0.12))
+      return {
+        ...element,
+        type: 'line',
+        x: first.x,
+        y: first.y,
+        width: last.x - first.x,
+        height: last.y - first.y,
+        points: undefined,
+        updatedAt: Date.now(),
+      };
+    if (!closed) return { ...element, updatedAt: Date.now() };
+    const corners = points.filter(
+      (point) =>
+        (Math.abs(point.x - minX) < width * 0.16 ||
+          Math.abs(point.x - (minX + width)) < width * 0.16) &&
+        (Math.abs(point.y - minY) < height * 0.16 ||
+          Math.abs(point.y - (minY + height)) < height * 0.16),
+    ).length;
+    if (corners >= 4)
+      return {
+        ...element,
+        type: 'rectangle',
+        x: minX,
+        y: minY,
+        width,
+        height,
+        points: undefined,
+        updatedAt: Date.now(),
+      };
+    return {
+      ...element,
+      type: 'ellipse',
+      x: minX,
+      y: minY,
+      width,
+      height,
+      points: undefined,
+      updatedAt: Date.now(),
+    };
+  }
+  function createPage() {
+    if (board.pages.length >= LIMITS.boardPages) return onNotice(t('tooManyBoards'));
+    const now = Date.now();
+    const page = {
+      id: crypto.randomUUID(),
+      title: `${t('newBoard')} ${board.pages.length + 1}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    board.addPage(page);
+    setActivePageId(page.id);
+    setSelected(null);
+  }
+  function removeCurrentPage() {
+    if (activePageId === DEFAULT_PAGE_ID || board.pages.length <= 1) return;
+    board.removePage(activePageId);
+    setActivePageId(DEFAULT_PAGE_ID);
+    setSelected(null);
+  }
   function wheel(event: React.WheelEvent) {
     event.preventDefault();
-    setZoom((v) => Math.max(0.2, Math.min(5, v * Math.exp(-event.deltaY * 0.001))));
+    if (followPresenter) stopFollowing();
+    const box = svg.current?.getBoundingClientRect();
+    const before = world(event);
+    const nextZoom = Math.max(0.2, Math.min(5, zoom * Math.exp(-event.deltaY * 0.001)));
+    setZoom(nextZoom);
+    if (box) {
+      const localX = event.clientX - box.left;
+      const localY = event.clientY - box.top;
+      setPan({ x: before.x - localX / nextZoom, y: before.y - localY / nextZoom });
+    }
+  }
+  function resetView() {
+    if (followPresenter) stopFollowing();
+    const width = svg.current?.clientWidth ?? 1200;
+    const height = svg.current?.clientHeight ?? 800;
+    setZoom(1);
+    setPan({ x: -width / 2, y: -height / 2 });
+  }
+  function fitSelectedImage() {
+    if (followPresenter) stopFollowing();
+    const image = visibleElements.find(
+      (element) => element.id === selected && element.type === 'image',
+    );
+    if (!image) return;
+    const viewportWidth = (svg.current?.clientWidth ?? 1200) / zoom;
+    const targetWidth = Math.min(680 / zoom, viewportWidth * 0.82);
+    const ratio = (image.width ?? 1) / Math.max(1, image.height ?? 1);
+    const targetHeight = targetWidth / ratio;
+    board.put({
+      ...image,
+      x: pan.x + (viewportWidth - targetWidth) / 2,
+      y: pan.y + 70 / zoom,
+      width: targetWidth,
+      height: targetHeight,
+      updatedAt: Date.now(),
+    });
+  }
+  function selectedImage() {
+    return visibleElements.find((element) => element.id === selected && element.type === 'image');
+  }
+  function rotateSelectedImage() {
+    const image = selectedImage();
+    if (image) board.put({ ...image, rotation: (image.rotation ?? 0) + 90, updatedAt: Date.now() });
+  }
+  function toggleSelectedLock() {
+    const image = selectedImage();
+    if (image) board.put({ ...image, locked: !image.locked, updatedAt: Date.now() });
+  }
+  function duplicateSelectedImage() {
+    const image = selectedImage();
+    if (!image) return;
+    const duplicate = {
+      ...image,
+      id: crypto.randomUUID(),
+      x: image.x + 32,
+      y: image.y + 32,
+      locked: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      zIndex: Math.max(...visibleElements.map((element) => element.zIndex ?? 0), 0) + 1,
+    };
+    board.put(duplicate);
+    setSelected(duplicate.id);
+  }
+  function changeSelectedLayer(direction: 1 | -1) {
+    const image = selectedImage();
+    if (!image) return;
+    board.put({ ...image, zIndex: (image.zIndex ?? 0) + direction, updatedAt: Date.now() });
+  }
+  function downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function serializedPage() {
+    const element = svg.current;
+    if (!element) return null;
+    const clone = element.cloneNode(true) as SVGSVGElement;
+    clone.querySelectorAll('.collaborator-cursor, .laser-pointer').forEach((node) => node.remove());
+    clone.setAttribute(
+      'viewBox',
+      `${pan.x} ${pan.y} ${(element.clientWidth || 1200) / zoom} ${(element.clientHeight || 800) / zoom}`,
+    );
+    clone.setAttribute('width', String(element.clientWidth || 1200));
+    clone.setAttribute('height', String(element.clientHeight || 800));
+    return new XMLSerializer().serializeToString(clone);
+  }
+  function exportSvg() {
+    const content = serializedPage();
+    if (content) downloadBlob(new Blob([content], { type: 'image/svg+xml' }), 'callyou-board.svg');
+  }
+  async function exportPng() {
+    const content = serializedPage();
+    if (!content) return;
+    const blob = new Blob([content], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width || 1200;
+      canvas.height = image.height || 800;
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0);
+      canvas.toBlob((output) => output && downloadBlob(output, 'callyou-board.png'), 'image/png');
+      URL.revokeObjectURL(url);
+    };
+    image.onerror = () => URL.revokeObjectURL(url);
+    image.src = url;
+  }
+  function printPdf() {
+    const content = serializedPage();
+    if (!content) return;
+    const popup = window.open('', '_blank', 'noopener,noreferrer');
+    if (!popup) return onNotice(t('popupBlocked'));
+    popup.document.write(
+      `<html><head><title>CallYou board</title><style>html,body{margin:0;height:100%}svg{width:100%;height:100%;display:block}</style></head><body>${content}</body></html>`,
+    );
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  }
+  function exportSession() {
+    const session = {
+      format: 'callyou-board',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      pages: board.pages,
+      elements: board.elements,
+    };
+    downloadBlob(
+      new Blob([JSON.stringify(session)], { type: 'application/json' }),
+      'callyou-session.json',
+    );
   }
   function editText(event: React.MouseEvent<SVGSVGElement>) {
     const id = targetId(event);
-    const element = board.elements.find((value) => value.id === id && value.type === 'text');
+    const element = visibleElements.find((value) => value.id === id && value.type === 'text');
     if (!element) return;
     setTextDialog({ point: { x: element.x, y: element.y }, element });
   }
@@ -473,6 +908,7 @@ export function Whiteboard({
         : {
             id: crypto.randomUUID(),
             type: 'text',
+            pageId: activePageId,
             createdBy: participantId,
             createdAt: now,
             updatedAt: now,
@@ -515,6 +951,7 @@ export function Whiteboard({
           height: displayHeight,
           assetName: asset.name.slice(0, 120),
           assetData: asset.data,
+          pageId: activePageId,
           strokeColor: '#94a3b8',
           strokeWidth: 1,
           opacity: 1,
@@ -596,13 +1033,109 @@ export function Whiteboard({
         <button onClick={board.redo} title={t('redo')}>
           <Redo2 />
         </button>
+        <button
+          className={smartShapes ? 'active' : ''}
+          onClick={() => setSmartShapes((value) => !value)}
+          title={t('smartShapes')}
+        >
+          <WandSparkles />
+          <span>{t('smartShapes')}</span>
+        </button>
         {isHost && (
           <button className="clear-board-button" onClick={onClear} title={t('clearBoard')}>
             <Trash2 />
             <span>{t('clearBoard')}</span>
           </button>
         )}
+        {selectedImage() && (
+          <>
+            <button onClick={fitSelectedImage} title={t('fitImage')}>
+              <Maximize2 />
+              <span>{t('fitImage')}</span>
+            </button>
+            <button onClick={rotateSelectedImage} title={t('rotateImage')}>
+              <RotateCw />
+              <span>{t('rotateImage')}</span>
+            </button>
+            <button
+              onClick={toggleSelectedLock}
+              title={t(selectedImage()?.locked ? 'unlockImage' : 'lockImage')}
+            >
+              {selectedImage()?.locked ? <Unlock /> : <Lock />}
+              <span>{t(selectedImage()?.locked ? 'unlockImage' : 'lockImage')}</span>
+            </button>
+            <button onClick={duplicateSelectedImage} title={t('duplicateImage')}>
+              <Copy />
+              <span>{t('duplicateImage')}</span>
+            </button>
+            <button onClick={() => changeSelectedLayer(1)} title={t('bringForward')}>
+              <ChevronUp />
+              <span>{t('bringForward')}</span>
+            </button>
+            <button onClick={() => changeSelectedLayer(-1)} title={t('sendBackward')}>
+              <ChevronDown />
+              <span>{t('sendBackward')}</span>
+            </button>
+          </>
+        )}
+        <button onClick={() => void exportPng()} title={t('exportPng')}>
+          <Download />
+          <span>{t('exportPng')}</span>
+        </button>
+        <button onClick={exportSvg} title={t('exportSvg')}>
+          <FileDown />
+          <span>{t('exportSvg')}</span>
+        </button>
+        <button onClick={printPdf} title={t('printPdf')}>
+          <FileDown />
+          <span>{t('printPdf')}</span>
+        </button>
+        <button onClick={exportSession} title={t('exportSession')}>
+          <Archive />
+          <span>{t('exportSession')}</span>
+        </button>
+        <button
+          className={followPresenter ? 'active' : ''}
+          onClick={toggleFollowPresenter}
+          title={t(followPresenter ? 'stopFollowingPresenter' : 'followPresenter')}
+          disabled={!presenter}
+        >
+          {followPresenter ? <EyeOff /> : <Eye />}
+          <span>{t(followPresenter ? 'stopFollowingPresenter' : 'followPresenter')}</span>
+        </button>
       </nav>
+      {presenter && (
+        <div className="presenter-status" role="status">
+          <span />
+          {followPresenter
+            ? t('followingPresenter').replace('{name}', presenter.displayName)
+            : t('presenterActive').replace('{name}', presenter.displayName)}
+        </div>
+      )}
+      <div className="page-tabs" role="tablist" aria-label={t('boards')}>
+        {board.pages.map((page) => (
+          <button
+            key={page.id}
+            className={page.id === activePageId ? 'active' : ''}
+            role="tab"
+            aria-selected={page.id === activePageId}
+            onClick={() => {
+              setActivePageId(page.id);
+              setSelected(null);
+            }}
+          >
+            {page.title}
+          </button>
+        ))}
+        <button className="page-add" onClick={createPage} title={t('newBoard')}>
+          <Plus />
+        </button>
+        {activePageId !== DEFAULT_PAGE_ID && (
+          <button className="page-remove" onClick={removeCurrentPage} title={t('deleteBoard')}>
+            <Trash2 />
+          </button>
+        )}
+      </div>
       <svg
         ref={svg}
         className={`whiteboard tool-${tool}`}
@@ -632,22 +1165,34 @@ export function Whiteboard({
             <path d="M0,0 L10,3.5 L0,7 Z" fill="#172554" />
           </marker>
         </defs>
-        <rect x="-100000" y="-100000" width="200000" height="200000" fill="#fff" />
-        <rect x="-100000" y="-100000" width="200000" height="200000" fill="url(#grid)" />
-        {board.elements.map((el) => renderElement(el, el.id === selected))}
+        <rect x="-1000000" y="-1000000" width="2000000" height="2000000" fill="#fff" />
+        <rect x="-1000000" y="-1000000" width="2000000" height="2000000" fill="url(#grid)" />
+        {visibleElements.map((el) => renderElement(el, el.id === selected))}
         {draft && renderElement(draft)}
-        {[...remoteStrokes.current].map(([id, s]) => (
-          <path
-            key={id}
-            d={path(s.points)}
-            fill="none"
-            stroke={s.color}
-            strokeWidth={s.width}
-            opacity={s.opacity}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
+        {[...remoteStrokes.current]
+          .filter(([, s]) => (s.pageId ?? DEFAULT_PAGE_ID) === activePageId)
+          .map(([id, s]) => (
+            <path
+              key={id}
+              d={path(s.points)}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={s.width}
+              opacity={s.opacity}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+        {remoteLaser?.active && (remoteLaser.pageId ?? DEFAULT_PAGE_ID) === activePageId && (
+          <g
+            className="laser-pointer"
+            transform={`translate(${remoteLaser.x} ${remoteLaser.y})`}
+            aria-label={remoteLaser.displayName}
+          >
+            <circle r="12" fill={remoteLaser.color} />
+            <circle r="22" fill="none" stroke={remoteLaser.color} strokeWidth="3" />
+          </g>
+        )}
         {[...cursors.current].map(([id, c]) => (
           <g key={id} transform={`translate(${c.x} ${c.y})`} className="collaborator-cursor">
             <path d="M0 0 L4 17 L8 10 L15 8 Z" fill={c.color} />
@@ -658,6 +1203,9 @@ export function Whiteboard({
         ))}
       </svg>
       <div className="zoom-controls">
+        <button onClick={resetView} title={t('resetView')}>
+          <Maximize2 />
+        </button>
         <button onClick={() => setZoom((v) => Math.min(5, v * 1.2))}>
           <ChevronUp />
         </button>

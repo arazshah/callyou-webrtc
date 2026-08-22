@@ -533,6 +533,7 @@ select:focus-visible {
   background: white;
 }
 .whiteboard {
+  touch-action: none;
   position: absolute;
   inset: 0;
   width: 100%;
@@ -573,6 +574,71 @@ select:focus-visible {
   overflow-y: hidden;
   white-space: nowrap;
   direction: ltr;
+}
+.presenter-status {
+  position: absolute;
+  z-index: 6;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #475569;
+  font-size: 11px;
+  box-shadow: 0 8px 25px rgba(15, 23, 42, 0.12);
+}
+.presenter-status span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+.page-tabs {
+  position: absolute;
+  z-index: 7;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 32px);
+  overflow-x: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 25px rgba(15, 23, 42, 0.1);
+}
+.page-tabs button {
+  flex: none;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  font-size: 11px;
+}
+.page-tabs button.active,
+.page-tabs button:hover {
+  background: var(--pale);
+  color: var(--blue);
+}
+.page-tabs .page-add,
+.page-tabs .page-remove {
+  width: 30px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+.page-tabs svg {
+  width: 16px;
 }
 .board-toolbar button,
 .zoom-controls button,
@@ -669,6 +735,20 @@ select:focus-visible {
   stroke: white;
   stroke-width: 3px;
 }
+.laser-pointer {
+  pointer-events: none;
+  filter: drop-shadow(0 2px 5px rgba(15, 23, 42, 0.35));
+}
+.laser-pointer circle:first-child {
+  animation: laser-pulse 0.9s ease-in-out infinite alternate;
+}
+@keyframes laser-pulse {
+  to {
+    opacity: 0.55;
+    transform: scale(0.8);
+    transform-origin: center;
+  }
+}
 .zoom-controls {
   position: absolute;
   z-index: 5;
@@ -698,6 +778,38 @@ select:focus-visible {
   padding: 9px;
   box-shadow: 0 14px 40px rgba(16, 24, 48, 0.24);
   direction: ltr;
+}
+.call-panel.presentation-stage {
+  position: fixed;
+  inset: 70px 18px 18px;
+  width: auto;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  border-radius: 20px;
+  box-shadow: 0 24px 80px rgba(2, 8, 23, 0.45);
+}
+.presentation-stage .videos {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.presentation-stage .video-tile.remote {
+  height: 100%;
+  aspect-ratio: auto;
+}
+.presentation-stage .video-tile.local {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: min(25%, 280px);
+  z-index: 5;
+  aspect-ratio: 16 / 9;
+  box-shadow: 0 12px 30px rgba(2, 8, 23, 0.4);
+}
+.presentation-stage .call-controls {
+  padding-top: 10px;
 }
 .recording-banner {
   display: flex;
@@ -1275,6 +1387,16 @@ kbd {
     width: 190px;
     padding: 6px;
   }
+  .call-panel.presentation-stage {
+    inset: 10px;
+    width: auto;
+    padding: 8px;
+  }
+  .presentation-stage .video-tile.local {
+    right: 8px;
+    bottom: 8px;
+    width: min(38%, 180px);
+  }
   .videos {
     grid-template-columns: 1fr 1fr;
     gap: 4px;
@@ -1329,9 +1451,9 @@ kbd {
   }
 }
 .resize-handle {
-  fill: #fff;
-  stroke: var(--blue);
-  stroke-width: 2;
+  fill: var(--blue);
+  stroke: #fff;
+  stroke-width: 3;
   vector-effect: non-scaling-stroke;
   cursor: nwse-resize;
 }

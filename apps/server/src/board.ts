@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import * as Y from 'yjs';
-import { boardElementSchema, LIMITS } from '@callyou/shared';
+import { boardElementSchema, boardPageSchema, LIMITS } from '@callyou/shared';
 
 interface ManagedDoc {
   doc: Y.Doc;
@@ -33,11 +33,14 @@ export class BoardManager {
       return false;
     }
     const values = [...candidate.getMap('elements').values()];
+    const pages = [...candidate.getMap('pages').values()];
     if (
       values.length > LIMITS.boardElements ||
+      pages.length > LIMITS.boardPages ||
       values.filter((value) => (value as { type?: unknown }).type === 'image').length >
         LIMITS.boardAssets ||
-      values.some((value) => !boardElementSchema.safeParse(value).success)
+      values.some((value) => !boardElementSchema.safeParse(value).success) ||
+      pages.some((value) => !boardPageSchema.safeParse(value).success)
     )
       return false;
     Y.applyUpdate(doc, update);

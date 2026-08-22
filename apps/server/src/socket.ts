@@ -4,12 +4,14 @@ import {
   chatMessageSchema,
   cursorSchema,
   iceCandidateSchema,
+  laserSchema,
   LIMITS,
   liveStrokeSchema,
   recordingRequestSchema,
   recordingResponseSchema,
   recordingStatusSchema,
   screenShareStatusSchema,
+  viewportSchema,
   roomJoinEventSchema,
   signalSchema,
   type ClientToServerEvents,
@@ -160,6 +162,27 @@ export function createSocketServer(
       if (current)
         socket.emit('board:sync', Y.encodeStateAsUpdate(await board.get(current.roomId)));
     });
+    socket.on(
+      'board:viewport',
+      authorized(viewportSchema, (data) => {
+        socket.to(current!.roomId).emit('board:viewport', {
+          ...data,
+          participantId: current!.participantId,
+          displayName: current!.displayName,
+        });
+      }),
+    );
+    socket.on(
+      'board:laser',
+      authorized(laserSchema, (data) => {
+        socket.to(current!.roomId).emit('board:laser', {
+          ...data,
+          participantId: current!.participantId,
+          displayName: current!.displayName,
+          color: current!.color,
+        });
+      }),
+    );
     socket.on('chat:send', async (value, ack) => {
       if (!current) return ack({ ok: false, code: 'unauthorized' });
       const parsed = chatMessageSchema.safeParse(value);

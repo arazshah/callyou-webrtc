@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   boardElementSchema,
+  boardPageSchema,
+  laserSchema,
   chatMessageSchema,
   iceCandidateSchema,
   LIMITS,
@@ -9,6 +11,7 @@ import {
   signalSchema,
   recordingRequestSchema,
   recordingResponseSchema,
+  viewportSchema,
   slugSchema,
   createRoomSchema,
   joinRoomSchema,
@@ -37,6 +40,22 @@ describe('room slugs', () => {
 });
 
 describe('board validation', () => {
+  it('accepts bounded page metadata', () => {
+    expect(
+      boardPageSchema.safeParse({
+        id: crypto.randomUUID(),
+        title: 'Lesson 1',
+        createdAt: 1,
+        updatedAt: 1,
+      }).success,
+    ).toBe(true);
+  });
+  it('accepts viewport and laser events within bounds', () => {
+    expect(viewportSchema.safeParse({ centerX: 10, centerY: -4, zoom: 1.25 }).success).toBe(true);
+    expect(
+      laserSchema.safeParse({ x: 10, y: 20, active: true, pageId: crypto.randomUUID() }).success,
+    ).toBe(true);
+  });
   it('rejects HTML-like invalid colors and overly long text', () => {
     const result = boardElementSchema.safeParse({
       id: crypto.randomUUID(),

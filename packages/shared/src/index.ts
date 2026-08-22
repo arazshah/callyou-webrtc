@@ -12,6 +12,7 @@ export const LIMITS = {
   chatText: 2000,
   chatFileBytes: 2 * 1024 * 1024,
   chatAttachmentData: 2_850_000,
+  boardPages: 24,
 } as const;
 
 export const RESERVED_SLUGS = new Set([
@@ -67,6 +68,9 @@ export const boardElementSchema = z
     createdBy: z.string().min(1).max(100),
     createdAt: z.number().int(),
     updatedAt: z.number().int(),
+    pageId: z.uuid().optional(),
+    locked: z.boolean().optional(),
+    zIndex: z.number().int().optional(),
     x: z.number().finite(),
     y: z.number().finite(),
     width: z.number().finite().optional(),
@@ -99,6 +103,15 @@ export const boardElementSchema = z
     }
   });
 export type BoardElement = z.infer<typeof boardElementSchema>;
+export const boardPageSchema = z
+  .object({
+    id: z.uuid(),
+    title: z.string().trim().min(1).max(80),
+    createdAt: z.number().int(),
+    updatedAt: z.number().int(),
+  })
+  .strict();
+export type BoardPage = z.infer<typeof boardPageSchema>;
 
 export const chatAttachmentSchema = z
   .object({
@@ -146,6 +159,7 @@ export const roomJoinEventSchema = z.object({ slug: slugSchema });
 export const cursorSchema = z.object({ x: z.number().finite(), y: z.number().finite() });
 export const liveStrokeSchema = z.object({
   id: z.uuid(),
+  pageId: z.uuid().optional(),
   points: z.array(pointSchema).max(256),
   color: z.string().regex(/^#[0-9a-f]{6}$/i),
   width: z.number().min(0.5).max(80),
@@ -168,6 +182,21 @@ export const recordingResponseSchema = z
   .strict();
 export const recordingStatusSchema = z.object({ active: z.boolean() }).strict();
 export const screenShareStatusSchema = z.object({ active: z.boolean() }).strict();
+export const viewportSchema = z
+  .object({
+    centerX: z.number().finite(),
+    centerY: z.number().finite(),
+    zoom: z.number().min(0.2).max(5),
+  })
+  .strict();
+export const laserSchema = z
+  .object({
+    pageId: z.uuid().optional(),
+    x: z.number().finite(),
+    y: z.number().finite(),
+    active: z.boolean(),
+  })
+  .strict();
 
 export interface ServerToClientEvents {
   'room:joined': (data: {
@@ -197,6 +226,22 @@ export interface ServerToClientEvents {
   'board:live-stroke': (data: z.infer<typeof liveStrokeSchema> & { participantId: string }) => void;
   'board:live-stroke-end': (data: { participantId: string; id: string }) => void;
   'board:cleared': () => void;
+  'board:viewport': (data: {
+    participantId: string;
+    displayName: string;
+    centerX: number;
+    centerY: number;
+    zoom: number;
+  }) => void;
+  'board:laser': (data: {
+    participantId: string;
+    displayName: string;
+    color: string;
+    pageId?: string | undefined;
+    x: number;
+    y: number;
+    active: boolean;
+  }) => void;
   'chat:message': (data: ChatMessage) => void;
   'webrtc:offer': (data: z.infer<typeof signalSchema>) => void;
   'webrtc:answer': (data: z.infer<typeof signalSchema>) => void;
@@ -219,6 +264,8 @@ export interface ClientToServerEvents {
   'participant:cursor': (data: z.infer<typeof cursorSchema>) => void;
   'board:yjs-update': (update: Uint8Array) => void;
   'board:sync-request': () => void;
+  'board:viewport': (data: z.infer<typeof viewportSchema>) => void;
+  'board:laser': (data: z.infer<typeof laserSchema>) => void;
   'board:live-stroke': (data: z.infer<typeof liveStrokeSchema>) => void;
   'board:live-stroke-end': (data: { id: string }) => void;
   'chat:send': (

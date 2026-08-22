@@ -7,6 +7,8 @@ import {
   Mic,
   MicOff,
   MonitorUp,
+  Maximize2,
+  Minimize2,
   PhoneOff,
   Play,
   Settings,
@@ -47,6 +49,7 @@ export function CallPanel({
   const [pendingRecording, setPendingRecording] = useState<string | null>(null);
   const [remoteRecording, setRemoteRecording] = useState(false);
   const [remoteSharing, setRemoteSharing] = useState(false);
+  const [presentation, setPresentation] = useState(false);
   const lastSharing = useRef(call.sharingScreen);
   useEffect(() => {
     cancelScheduledMediaStop();
@@ -148,7 +151,7 @@ export function CallPanel({
   }[call.quality.level] as 'qualityUnknown' | 'qualityGood' | 'qualityFair' | 'qualityPoor';
   return (
     <aside
-      className={`call-panel ${remoteSharing ? 'presentation-active' : ''}`}
+      className={`call-panel ${remoteSharing ? 'presentation-active' : ''} ${presentation ? 'presentation-stage' : ''}`}
       aria-label="Video call"
     >
       {(call.recording || remoteRecording) && (
@@ -229,6 +232,13 @@ export function CallPanel({
           )}
         >
           {call.recording ? <Square /> : <Circle />}
+        </button>
+        <button
+          className={presentation ? 'active-control' : ''}
+          onClick={() => setPresentation((value) => !value)}
+          title={t(presentation ? 'exitPresentation' : 'enterPresentation')}
+        >
+          {presentation ? <Minimize2 /> : <Maximize2 />}
         </button>
         <button
           className="danger"
