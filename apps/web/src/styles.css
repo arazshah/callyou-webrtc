@@ -558,22 +558,28 @@ select:focus-visible {
 .board-toolbar {
   position: absolute;
   z-index: 5;
-  top: 14px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 88px;
+  right: 16px;
+  left: auto;
+  transform: none;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--line);
   box-shadow: 0 8px 30px rgba(28, 42, 70, 0.12);
-  border-radius: 13px;
+  border-radius: 16px;
   padding: 6px;
-  max-width: calc(100% - 330px);
-  overflow-x: auto;
-  overflow-y: hidden;
-  white-space: nowrap;
+  max-width: 58px;
+  max-height: calc(100% - 120px);
+  overflow-x: hidden;
+  overflow-y: auto;
   direction: ltr;
+}
+.board-toolbar button span,
+.board-toolbar .board-file-button span {
+  display: none;
 }
 .presenter-status {
   position: absolute;
@@ -654,11 +660,11 @@ select:focus-visible {
   flex: 0 0 auto;
 }
 .board-toolbar .board-file-button {
-  width: auto;
+  width: 36px;
   height: 36px;
   border-radius: 8px;
   color: #536078;
-  padding: 0 9px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -703,10 +709,10 @@ select:focus-visible {
   width: 19px;
 }
 .divider {
-  height: 25px;
-  width: 1px;
+  height: 1px;
+  width: 25px;
   background: var(--line);
-  margin: 0 3px;
+  margin: 3px 0;
   flex: none;
 }
 .color-control input {
@@ -717,7 +723,10 @@ select:focus-visible {
   background: none;
 }
 .width-control input {
-  width: 68px;
+  width: 22px;
+  height: 68px;
+  writing-mode: vertical-lr;
+  direction: rtl;
 }
 .selection-box {
   fill: none;
@@ -769,7 +778,8 @@ select:focus-visible {
 .call-panel {
   position: absolute;
   z-index: 8;
-  right: 14px;
+  left: 16px;
+  right: auto;
   top: 72px;
   width: 282px;
   background: #111a31;
@@ -949,13 +959,17 @@ select:focus-visible {
   color: #79dfa7;
 }
 .call-controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
 }
 .call-controls button {
   background: #27324e;
   color: white;
+  width: 100%;
+  min-width: 0;
+  height: 38px;
 }
 .call-controls .danger {
   background: var(--danger);
@@ -1375,7 +1389,29 @@ kbd {
     left: 8px;
     right: 8px;
     transform: none;
+    flex-direction: row;
+    align-items: center;
     max-width: none;
+    max-height: 58px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    border-radius: 13px;
+  }
+  .board-toolbar .board-file-button {
+    width: 36px;
+    padding: 0;
+  }
+  .board-toolbar .divider {
+    height: 25px;
+    width: 1px;
+    margin: 0 3px;
+  }
+  .width-control input {
+    width: 68px;
+    height: auto;
+    writing-mode: horizontal-tb;
+    direction: ltr;
   }
   .zoom-controls {
     bottom: 76px;
@@ -1383,6 +1419,7 @@ kbd {
   }
   .call-panel {
     top: 10px;
+    left: auto;
     right: 8px;
     width: 190px;
     padding: 6px;
