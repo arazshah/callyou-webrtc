@@ -10,4 +10,6 @@ Images are resized and encoded as bounded WebP data before entering the Yjs docu
 
 The current page can be exported as SVG or PNG. The print action opens a clean page that can be saved as PDF by the browser's print dialog. A session JSON export contains all pages, elements, and locally embedded assets for archival; no board data is uploaded for export.
 
+The desktop interface keeps the drawing tools in a compact vertical rail on the right. Its height reserves a dedicated lower-right area for chat, so the controls never overlap. Board navigation appears as a quiet paper-edge tab attached to the top of the canvas; it becomes fully visible on hover or keyboard focus. On narrow screens, the tool rail returns to a horizontally scrollable bottom bar.
+
 Shortcuts: `P` pen, `H` highlighter, `E` eraser, `V` select, `L` line, `A` arrow, `R` rectangle, `O` ellipse, `T` text, Delete/Backspace removes selection, Ctrl/Cmd-Z undo, Ctrl/Cmd-Shift-Z or Ctrl/Cmd-Y redo. Smart shape recognition is opt-in and converts simple freehand lines, rectangles, and ellipses. Host clear requires browser confirmation.

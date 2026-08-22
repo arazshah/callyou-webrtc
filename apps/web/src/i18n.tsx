@@ -130,11 +130,16 @@ const messages = {
     guide2Title: 'دوربین و میکروفن را آماده کنید',
     guide2Body: 'اجازه دسترسی را بدهید و هر دو تصویر را جداگانه در پنل تماس ببینید.',
     guide3Title: 'روی تخته با هم کار کنید',
-    guide3Body: 'بنویسید، شکل بکشید، جابه‌جا کنید و با واگرد اشتباه‌ها را برگردانید.',
+    guide3Body:
+      'ابزارهای رسم در نوار عمودی سمت راست هستند؛ روی هر آیکون مکث کنید تا کاربرد آن نمایش داده شود.',
+    guide7Title: 'بین تخته‌ها جابه‌جا شوید',
+    guide7Body:
+      'لبهٔ کوچک بالای تخته، صفحهٔ فعلی و دکمهٔ افزودن صفحه را نشان می‌دهد؛ با انتخاب هر لبه به همان تخته بروید.',
     guide4Title: 'تصویر یا PDF تدریس را بیاورید',
     guide4Body: 'فایل را از نوار ابزار اضافه کنید و مستقیماً روی صفحه‌ها علامت بزنید.',
     guide5Title: 'پیام، ایموجی و فایل بفرستید',
-    guide5Body: 'چت سادهٔ داخل اتاق برای توضیح کوتاه و انتقال فایل در دسترس است.',
+    guide5Body:
+      'دکمهٔ چت در گوشهٔ پایین راست، جدا از ابزارهای تخته قرار دارد و برای پیام، ایموجی و فایل در دسترس است.',
     guide6Title: 'صفحه را به اشتراک بگذارید یا جلسه را ضبط کنید',
     guide6Body: 'صفحه‌نمایش را ارائه کنید؛ ضبط جلسه نیز فقط پس از تأیید نفر مقابل آغاز می‌شود.',
     gotIt: 'متوجه شدم، شروع کنیم',
@@ -272,11 +277,16 @@ const messages = {
     guide2Title: 'Set up camera and microphone',
     guide2Body: 'Grant access and see both participants in separate, clearly visible tiles.',
     guide3Title: 'Work together on the board',
-    guide3Body: 'Draw, add shapes, move items, and recover mistakes with undo.',
+    guide3Body:
+      'Drawing tools live in the vertical toolbar on the right; hover over an icon to see what it does.',
+    guide7Title: 'Move between boards',
+    guide7Body:
+      'The small tab at the top shows the current page and the add-page button; select another tab to switch boards.',
     guide4Title: 'Bring in an image or teaching PDF',
     guide4Body: 'Import it from the toolbar and annotate directly over each page.',
     guide5Title: 'Send text, emoji, and files',
-    guide5Body: 'Use the simple in-room chat for notes and lightweight file transfer.',
+    guide5Body:
+      'Chat sits separately in the lower-right corner for messages, emoji, and lightweight file transfer.',
     guide6Title: 'Share your screen or record the call',
     guide6Body:
       'Present your screen; call recording starts only after the other participant approves.',

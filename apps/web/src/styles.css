@@ -572,7 +572,7 @@ select:focus-visible {
   border-radius: 16px;
   padding: 6px;
   max-width: 58px;
-  max-height: calc(100% - 120px);
+  max-height: calc(100% - 176px);
   overflow-x: hidden;
   overflow-y: auto;
   direction: ltr;
@@ -607,29 +607,41 @@ select:focus-visible {
 .page-tabs {
   position: absolute;
   z-index: 7;
-  top: 64px;
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 4px;
-  max-width: calc(100% - 32px);
+  gap: 2px;
+  max-width: min(520px, calc(100% - 360px));
   overflow-x: auto;
-  padding: 4px;
+  padding: 2px 4px 4px;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 8px 25px rgba(15, 23, 42, 0.1);
+  border-top: 0;
+  border-radius: 0 0 11px 11px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.07);
+  opacity: 0.72;
+  transition:
+    opacity 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+.page-tabs:hover,
+.page-tabs:focus-within {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
 }
 .page-tabs button {
   flex: none;
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 25px;
+  padding: 0 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   color: #64748b;
-  font-size: 11px;
+  font-size: 10px;
 }
 .page-tabs button.active,
 .page-tabs button:hover {
@@ -638,13 +650,13 @@ select:focus-visible {
 }
 .page-tabs .page-add,
 .page-tabs .page-remove {
-  width: 30px;
+  width: 25px;
   padding: 0;
   display: grid;
   place-items: center;
 }
 .page-tabs svg {
-  width: 16px;
+  width: 14px;
 }
 .board-toolbar button,
 .zoom-controls button,
@@ -1397,6 +1409,9 @@ kbd {
     overflow-y: hidden;
     white-space: nowrap;
     border-radius: 13px;
+  }
+  .page-tabs {
+    max-width: calc(100% - 32px);
   }
   .board-toolbar .board-file-button {
     width: 36px;
