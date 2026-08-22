@@ -585,17 +585,21 @@ select:focus-visible {
   position: absolute;
   z-index: 6;
   top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 16px;
+  transform: none;
   display: flex;
   align-items: center;
   gap: 7px;
+  max-width: 280px;
   padding: 7px 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.94);
   color: #475569;
   font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   box-shadow: 0 8px 25px rgba(15, 23, 42, 0.12);
 }
 .presenter-status span {
@@ -1412,6 +1416,13 @@ kbd {
   }
   .page-tabs {
     max-width: calc(100% - 32px);
+  }
+  .presenter-status {
+    top: 8px;
+    left: 8px;
+    max-width: calc(100% - 220px);
+    padding: 6px 9px;
+    font-size: 10px;
   }
   .board-toolbar .board-file-button {
     width: 36px;
