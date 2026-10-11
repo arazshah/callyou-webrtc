@@ -6,6 +6,7 @@
     X-Content-Type-Options "nosniff"
   }
   @backend path /api/* /socket.io/*
+  header @backend Cache-Control "no-store, private"
   reverse_proxy @backend server:3000
   root * /srv
   try_files {path} /index.html
