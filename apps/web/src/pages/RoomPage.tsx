@@ -31,6 +31,7 @@ export function RoomPage() {
   const [confirming, setConfirming] = useState<'clear' | 'end' | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [help, setHelp] = useState(false);
+  const [connectionError, setConnectionError] = useState('');
   const socket = useMemo<CallYouSocket>(() => connectSocket(), []);
   useEffect(() => {
     let alive = true;
@@ -52,22 +53,33 @@ export function RoomPage() {
   useEffect(() => {
     if (status !== 'room') return;
     const join = () =>
-      socket.emit('room:join', { slug }, (result) => {
-        if (!result.ok) setStatus(result.code === 'room_ended' ? 'ended' : 'join');
+      socket.timeout(10_000).emit('room:join', { slug }, (timeoutError, result) => {
+        if (timeoutError) return setConnectionError(t('socketJoinTimeout'));
+        if (result.ok) return setConnectionError('');
+        if (result.code === 'room_ended') return setStatus('ended');
+        setError(t('sessionInvalid'));
+        setStatus('join');
       });
-    const joined = (data: Identity) => setIdentity(data);
+    const joined = (data: Identity) => {
+      setConnectionError('');
+      setIdentity(data);
+    };
     const ended = () => setStatus('ended');
+    const failed = (reason: Error) =>
+      setConnectionError(`${t('socketFailed')} (${reason.message})`);
     socket.on('connect', join);
+    socket.on('connect_error', failed);
     socket.on('room:joined', joined);
     socket.on('room:ended', ended);
     if (socket.connected) join();
     else socket.connect();
     return () => {
       socket.off('connect', join);
+      socket.off('connect_error', failed);
       socket.off('room:joined', joined);
       socket.off('room:ended', ended);
     };
-  }, [slug, socket, status]);
+  }, [slug, socket, status, t]);
   useEffect(
     () => () => {
       socket.disconnect();
@@ -244,6 +256,11 @@ export function RoomPage() {
           <div className="workspace-loading">
             <div className="loader" />
             {t('connecting')}
+            {connectionError && (
+              <p className="error" role="alert">
+                {connectionError}
+              </p>
+            )}
           </div>
         )}
       </div>
