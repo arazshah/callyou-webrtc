@@ -57,6 +57,9 @@ export function RoomPage() {
         if (timeoutError) return setConnectionError(t('socketJoinTimeout'));
         if (result.ok) return setConnectionError('');
         if (result.code === 'room_ended') return setStatus('ended');
+        // The server reads the session cookie only during the socket handshake, so drop this
+        // connection; the next attempt must handshake again with the cookie from /join.
+        socket.disconnect();
         setError(t('sessionInvalid'));
         setStatus('join');
       });
@@ -93,6 +96,7 @@ export function RoomPage() {
     try {
       const displayName = String(data.displayName ?? '').trim();
       await api.joinRoom(slug, { displayName });
+      socket.disconnect();
       setPrejoinName(displayName);
       setStatus('prejoin');
     } catch (e) {

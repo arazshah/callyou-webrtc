@@ -43,6 +43,8 @@ export async function buildApp(config: Config = loadConfig()) {
     );
   });
   app.addHook('onRequest', async (request, reply) => {
+    // API answers depend on the session cookie; a shared cache (CDN) must never reuse them.
+    if (request.url.startsWith('/api/')) reply.header('Cache-Control', 'no-store, private');
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
       const origin = request.headers.origin;
       if (origin && origin !== config.APP_URL)
