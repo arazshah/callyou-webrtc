@@ -52,7 +52,7 @@ export async function buildApp(config: Config = loadConfig()) {
   await app.register(rateLimit, { global: false });
   const rooms = new RoomService(database.pool, config);
   const board = new BoardManager(database.pool);
-  const sockets = createSocketServer(app.server, rooms, board, config);
+  const sockets = createSocketServer(app.server, rooms, board, config, app.log);
   registerRoutes(app, rooms, board, config, sockets.broadcast);
   const cleanup = setInterval(
     () =>

@@ -14,6 +14,10 @@ const messages = {
     leave: 'خروج از اتاق',
     end: 'پایان دادن به اتاق',
     roomFull: 'اتاق پر است',
+    socketFailed: 'اتصال بلادرنگ به سرور برقرار نشد. در حال تلاش مجدد…',
+    socketJoinTimeout:
+      'سرور به درخواست ورود پاسخ نداد. اتصال شبکه یا تنظیمات WebSocket پروکسی را بررسی کنید.',
+    sessionInvalid: 'نشست شما معتبر نیست. لطفاً دوباره نام خود را وارد کنید.',
     connecting: 'در حال اتصال',
     connected: 'اتصال برقرار شد',
     disconnected: 'ارتباط قطع شد',
@@ -161,6 +165,10 @@ const messages = {
     leave: 'Leave room',
     end: 'End room',
     roomFull: 'Room is full',
+    socketFailed: 'Could not open a realtime connection to the server. Retrying…',
+    socketJoinTimeout:
+      'The server did not answer the join request. Check the network or the proxy WebSocket settings.',
+    sessionInvalid: 'Your session is not valid. Please enter your name again.',
     connecting: 'Connecting',
     connected: 'Connected',
     disconnected: 'Disconnected',

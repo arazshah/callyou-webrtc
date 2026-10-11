@@ -1,4 +1,5 @@
 import type { Server as HttpServer } from 'node:http';
+import type { FastifyBaseLogger } from 'fastify';
 import { Server } from 'socket.io';
 import {
   chatMessageSchema,
@@ -42,6 +43,7 @@ export function createSocketServer(
   rooms: RoomService,
   board: BoardManager,
   config: Config,
+  log?: FastifyBaseLogger,
 ) {
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
     path: '/socket.io',
@@ -50,6 +52,20 @@ export function createSocketServer(
     allowRequest: (request, callback) =>
       callback(null, !request.headers.origin || request.headers.origin === config.APP_URL),
   });
+  io.engine.on(
+    'connection_error',
+    (error: { code: number; message: string; req?: { headers?: Record<string, unknown> } }) => {
+      log?.warn(
+        {
+          code: error.code,
+          reason: error.message,
+          origin: error.req?.headers?.origin,
+          expectedOrigin: config.APP_URL,
+        },
+        'Socket connection rejected',
+      );
+    },
+  );
   const participantSockets = new Map<string, Set<string>>();
   io.on('connection', (socket) => {
     const token = safeDecode(readCookie(socket.handshake.headers.cookie, 'callyou_session') ?? '');
@@ -58,53 +74,69 @@ export function createSocketServer(
     socket.on('room:join', async (payload, ack) => {
       const parsed = roomJoinEventSchema.safeParse(payload);
       if (!parsed.success) return ack({ ok: false, code: 'invalid_payload' });
-      const auth = await rooms.authenticate(verifiedSessionId, parsed.data.slug);
-      if (!auth) return ack({ ok: false, code: 'unauthorized' });
-      current = auth;
-      const set = participantSockets.get(auth.participantId) ?? new Set<string>();
-      const firstSocket = set.size === 0;
-      set.add(socket.id);
-      participantSockets.set(auth.participantId, set);
-      await socket.join(auth.roomId);
-      await rooms.touch(auth.sessionId);
-      const doc = await board.get(auth.roomId);
-      const sockets = await io.in(auth.roomId).fetchSockets();
-      const peers = sockets
-        .filter(
-          (item) =>
-            item.id !== socket.id &&
-            item.data.participantId &&
-            item.data.participantId !== auth.participantId,
-        )
-        .map((item) => ({
-          participantId: item.data.participantId as string,
-          displayName: item.data.displayName as string,
-          color: item.data.color as string,
-        }))
-        .filter(
-          (peer, index, all) =>
-            all.findIndex((item) => item.participantId === peer.participantId) === index,
-        );
-      socket.data = {
-        participantId: auth.participantId,
-        displayName: auth.displayName,
-        color: auth.color,
-      };
-      socket.emit('room:joined', {
-        participantId: auth.participantId,
-        role: auth.role,
-        displayName: auth.displayName,
-        color: auth.color,
-        peers,
-      });
-      socket.emit('board:sync', Y.encodeStateAsUpdate(doc));
-      if (firstSocket)
-        socket.to(auth.roomId).emit('participant:joined', {
+      try {
+        const auth = await rooms.authenticate(verifiedSessionId, parsed.data.slug);
+        if (!auth) {
+          log?.warn(
+            {
+              slug: parsed.data.slug,
+              hasCookie: Boolean(token),
+              validToken: Boolean(verifiedSessionId),
+            },
+            'Socket room join unauthorized',
+          );
+          return ack({ ok: false, code: 'unauthorized' });
+        }
+        current = auth;
+        const set = participantSockets.get(auth.participantId) ?? new Set<string>();
+        const firstSocket = set.size === 0;
+        set.add(socket.id);
+        participantSockets.set(auth.participantId, set);
+        await socket.join(auth.roomId);
+        await rooms.touch(auth.sessionId);
+        const doc = await board.get(auth.roomId);
+        const sockets = await io.in(auth.roomId).fetchSockets();
+        const peers = sockets
+          .filter(
+            (item) =>
+              item.id !== socket.id &&
+              item.data.participantId &&
+              item.data.participantId !== auth.participantId,
+          )
+          .map((item) => ({
+            participantId: item.data.participantId as string,
+            displayName: item.data.displayName as string,
+            color: item.data.color as string,
+          }))
+          .filter(
+            (peer, index, all) =>
+              all.findIndex((item) => item.participantId === peer.participantId) === index,
+          );
+        socket.data = {
           participantId: auth.participantId,
           displayName: auth.displayName,
           color: auth.color,
+        };
+        socket.emit('room:joined', {
+          participantId: auth.participantId,
+          role: auth.role,
+          displayName: auth.displayName,
+          color: auth.color,
+          peers,
         });
-      ack({ ok: true });
+        socket.emit('board:sync', Y.encodeStateAsUpdate(doc));
+        if (firstSocket)
+          socket.to(auth.roomId).emit('participant:joined', {
+            participantId: auth.participantId,
+            displayName: auth.displayName,
+            color: auth.color,
+          });
+        log?.info({ slug: auth.slug, role: auth.role, peers: peers.length }, 'Socket joined room');
+        ack({ ok: true });
+      } catch (error) {
+        log?.error({ err: error }, 'Socket room join failed');
+        ack({ ok: false, code: 'internal_error' });
+      }
     });
     const authorized =
       <T>(
